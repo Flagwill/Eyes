@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(MioEyesDesktop VERSION 0.1.0 LANGUAGES CXX)
+project(Eyes VERSION 0.1.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
@@ -20,32 +20,32 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     ShaderTools
 )
 
-set(MIO_WALLPAPER_UI packaging/plasma-wallpaper/com.mio.Eyes/contents/ui)
-set(MIO_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eye.frag.qsb)
+set(EYES_WALLPAPER_UI packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui)
+set(EYES_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eye.frag.qsb)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui)
-configure_file(${MIO_WALLPAPER_UI}/EyeScene.qml wallpaper-ui/EyeScene.qml COPYONLY)
+configure_file(${EYES_WALLPAPER_UI}/EyeScene.qml wallpaper-ui/EyeScene.qml COPYONLY)
 configure_file(eyes-core.js wallpaper-ui/eyes-core.js COPYONLY)
 add_custom_command(
-    OUTPUT ${MIO_SHADER_OUTPUT}
+    OUTPUT ${EYES_SHADER_OUTPUT}
     COMMAND Qt6::qsb --glsl "100 es,120,150" --hlsl 50 --msl 12
-        -o ${MIO_SHADER_OUTPUT}
-        ${CMAKE_CURRENT_SOURCE_DIR}/${MIO_WALLPAPER_UI}/eye.frag
-    DEPENDS ${MIO_WALLPAPER_UI}/eye.frag
+        -o ${EYES_SHADER_OUTPUT}
+        ${CMAKE_CURRENT_SOURCE_DIR}/${EYES_WALLPAPER_UI}/eye.frag
+    DEPENDS ${EYES_WALLPAPER_UI}/eye.frag
     VERBATIM
 )
-add_custom_target(mio-eye-shader ALL DEPENDS ${MIO_SHADER_OUTPUT})
+add_custom_target(eyes-eye-shader ALL DEPENDS ${EYES_SHADER_OUTPUT})
 
-qt_add_executable(mio-desktop
+qt_add_executable(eyes-desktop
     desktop/main.cpp
 )
 
-qt_add_resources(mio-desktop "mio_resources"
+qt_add_resources(eyes-desktop "eyes_resources"
     PREFIX "/"
     FILES
-        desktop/mio-tray.svg
+        desktop/eyes-tray.svg
 )
 
-target_link_libraries(mio-desktop PRIVATE
+target_link_libraries(eyes-desktop PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -54,31 +54,31 @@ target_link_libraries(mio-desktop PRIVATE
     Qt6::WebSockets
 )
 
-install(TARGETS mio-desktop RUNTIME DESTINATION bin)
-install(PROGRAMS bin/mio DESTINATION bin)
+install(TARGETS eyes-desktop RUNTIME DESTINATION bin)
+install(PROGRAMS bin/eyes DESTINATION bin)
 install(FILES
-    packaging/mio-desktop.desktop
+    packaging/eyes-desktop.desktop
     DESTINATION share/applications
 )
 install(FILES
-    desktop/mio-tray.svg
+    desktop/eyes-tray.svg
     DESTINATION share/icons/hicolor/scalable/apps
-    RENAME mio-desktop.svg
+    RENAME eyes-desktop.svg
 )
 install(FILES
-    packaging/kwin-mio-eyes-cursor.desktop
+    packaging/kwin-eyes-cursor.desktop
     DESTINATION share/applications
 )
 install(FILES
-    packaging/kwin-mio-eyes-cursor/metadata.json
-    DESTINATION share/kwin/scripts/mio-eyes-cursor
+    packaging/kwin-eyes-cursor/metadata.json
+    DESTINATION share/kwin/scripts/eyes-cursor
 )
 install(FILES
-    packaging/kwin-mio-eyes-cursor/main.js
-    DESTINATION share/kwin/scripts/mio-eyes-cursor/contents/code
+    packaging/kwin-eyes-cursor/main.js
+    DESTINATION share/kwin/scripts/eyes-cursor/contents/code
 )
 install(DIRECTORY
-    packaging/plasma-wallpaper/com.mio.Eyes
+    packaging/plasma-wallpaper/org.eyes.wallpaper
     DESTINATION share/plasma/wallpapers
     FILES_MATCHING
     PATTERN "metadata.json"
@@ -88,6 +88,6 @@ install(DIRECTORY
 )
 install(FILES
     eyes-core.js
-    ${MIO_SHADER_OUTPUT}
-    DESTINATION share/plasma/wallpapers/com.mio.Eyes/contents/ui
+    ${EYES_SHADER_OUTPUT}
+    DESTINATION share/plasma/wallpapers/org.eyes.wallpaper/contents/ui
 )

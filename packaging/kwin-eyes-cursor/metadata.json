@@ -3,15 +3,15 @@
   "KPlugin": {
     "Authors": [
       {
-        "Name": "MIO"
+        "Name": "Eyes"
       }
     ],
-    "Description": "将 Wayland 全局光标位置提供给 MIO 双眼注意力动画",
+    "Description": "将 Wayland 全局光标位置提供给 Eyes 双眼注意力动画",
     "EnabledByDefault": true,
     "Icon": "input-mouse",
-    "Id": "mio-eyes-cursor",
+    "Id": "eyes-cursor",
     "License": "MIT",
-    "Name": "MIO Agent Eyes Cursor",
+    "Name": "Eyes 光标桥接",
     "Version": "0.1.0"
   },
   "X-Plasma-API": "javascript"

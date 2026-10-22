@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Control the MIO desktop eye overlay."""
+"""Control the Eyes desktop eye overlay."""
 
 from __future__ import annotations
 
@@ -16,19 +16,19 @@ from pathlib import Path
 def runtime_socket() -> Path:
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if runtime:
-        return Path(runtime) / "mio-eyes.sock"
-    return Path("/tmp") / f"mio-eyes-{os.getuid()}.sock"
+        return Path(runtime) / "eyes.sock"
+    return Path("/tmp") / f"eyes-{os.getuid()}.sock"
 
 
 def executable_candidates() -> list[Path]:
-    explicit = os.environ.get("MIO_DESKTOP_BIN")
+    explicit = os.environ.get("EYES_DESKTOP_BIN")
     script_dir = Path(__file__).resolve().parent
     project = script_dir.parent if script_dir.name == "bin" else script_dir
     values = [
         explicit,
-        script_dir / "mio-desktop",
-        project / "build" / "mio-desktop",
-        shutil.which("mio-desktop"),
+        script_dir / "eyes-desktop",
+        project / "build" / "eyes-desktop",
+        shutil.which("eyes-desktop"),
     ]
     return [Path(value) for value in values if value]
 
@@ -44,7 +44,7 @@ def launch_desktop() -> None:
     )
     if executable is None:
         raise SystemExit(
-            "找不到 mio-desktop。请先运行 npm run desktop:build，"
+            "找不到 eyes-desktop。请先运行 npm run desktop:build，"
             "或重新安装桌面组件。"
         )
 
@@ -62,10 +62,10 @@ def launch_desktop() -> None:
             command = [
                 systemd_run,
                 "--user",
-                "--unit=mio-desktop",
+                "--unit=eyes-desktop",
                 "--collect",
                 "--quiet",
-                "--description=MIO Agent Eyes",
+                "--description=Eyes",
                 str(executable),
                 "--hidden",
             ]
@@ -93,7 +93,7 @@ def launch_desktop() -> None:
 
     cache = Path(
         os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
-    ) / "mio-eyes"
+    ) / "eyes"
     cache.mkdir(parents=True, exist_ok=True)
     log = (cache / "desktop.log").open("ab")
     subprocess.Popen(
@@ -148,17 +148,17 @@ def send(command: str, *, autostart: bool = True) -> dict:
 
 def usage() -> str:
     return """用法:
-  mio show | hide | toggle
-  mio start | thinking | working | waiting | complete | idle
-  mio host-start
-  mio blink [double]
-  mio look X Y [SECONDS]       X/Y 范围 -1 到 1
-  mio emotion ID
-  mio status
-  mio demo
-  mio quit
+  eyes show | hide | toggle
+  eyes start | thinking | working | waiting | complete | idle
+  eyes host-start
+  eyes blink [double]
+  eyes look X Y [SECONDS]       X/Y 范围 -1 到 1
+  eyes emotion ID
+  eyes status
+  eyes demo
+  eyes quit
 
-直接运行 mio 等同于 mio show。"""
+直接运行 eyes 等同于 eyes show。"""
 
 
 def main() -> int:
@@ -186,15 +186,15 @@ def main() -> int:
                 with connect(8.0):
                     pass
             except OSError as error:
-                print(f"MIO 桌面组件启动失败：{error}", file=sys.stderr)
+                print(f"Eyes 桌面组件启动失败：{error}", file=sys.stderr)
                 return 1
-        print("MIO 后台已启动")
+        print("Eyes 后台已启动")
         return 0
 
     try:
         response = send(command, autostart=primary_command != "status")
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        print(f"MIO 桌面组件连接失败：{error}", file=sys.stderr)
+        print(f"Eyes 桌面组件连接失败：{error}", file=sys.stderr)
         return 1
 
     if primary_command == "status":

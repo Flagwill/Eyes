@@ -3,8 +3,10 @@
 ## Status
 Accepted, 2026-10-22.
 
+The contour softness and glow described here were later replaced by crisp contours in [ADR-002](002-eyes-identity-and-crisp-contours.md). The wallpaper architecture remains unchanged.
+
 ## Context
-MIO must affect only the wallpaper. Desktop icons, panels and application windows must stay above it, with normal input handling. A Layer Shell background surface can cover Plasma's desktop icons because it is a separate surface in the same layer.
+Eyes must affect only the wallpaper. Desktop icons, panels and application windows must stay above it, with normal input handling. A Layer Shell background surface can cover Plasma's desktop icons because it is a separate surface in the same layer.
 
 The initial wallpaper plugin drew an entire screen-sized QML Canvas every 16 ms. Qt 6 Canvas.Image rasterizes on the CPU and uploads its image to the GPU; scaled Canvas shadows made this especially expensive. A 1600 by 1000 thinking-expression probe measured approximately 2.7–3.3 updates per second, with typical intervals of 300–375 ms.
 
@@ -20,9 +22,9 @@ Generate `.qsb` during CMake builds using Qt 6 ShaderTools and install it next t
 ## Validation
 A sustained standalone GPU probe measured 59.3 updates per second with a 17 ms p95 interval on a 60 Hz display. This probe is not a substitute for desktop measurements.
 
-Plasma kept its previous QML component cached after a plugin switch, so replacing files alone left the old slow renderer active. After refreshing `plasma-plasmashell.service`, the actual wallpaper logged `MIO GPU wallpaper loaded`. Consecutive five-second samples measured about 59–60 updates per second with 17–18 ms p95 intervals, with some busy intervals around 55–59 updates per second. These are simulation frame cadence measurements, not a guarantee about every compositor presentation or every machine.
+Plasma kept its previous QML component cached after a plugin switch, so replacing files alone left the old slow renderer active. After refreshing `plasma-plasmashell.service`, the actual wallpaper logged `Eyes GPU wallpaper loaded`. Consecutive five-second samples measured about 59–60 updates per second with 17–18 ms p95 intervals, with some busy intervals around 55–59 updates per second. These are simulation frame cadence measurements, not a guarantee about every compositor presentation or every machine.
 
-The installer detects changed renderer resources and refreshes the Plasma service when available. Optional wallpaper configuration `DebugPerformance=true` logs actual `MIO_PERF GPU` samples. Disable it after measuring. Use Qt 6 tools from `/usr/lib/qt6/bin`; unqualified tools may resolve to Qt 5.
+The installer detects changed renderer resources and refreshes the Plasma service when available. Optional wallpaper configuration `DebugPerformance=true` logs actual `EYES_PERF GPU` samples. Disable it after measuring. Use Qt 6 tools from `/usr/lib/qt6/bin`; unqualified tools may resolve to Qt 5.
 
 ## Alternatives
 - Full-screen Canvas: rejected because CPU rasterization, shadows and image uploads dominate every frame.

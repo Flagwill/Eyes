@@ -134,7 +134,7 @@ function stopDemo() {
   $('#demo span').textContent = '演示工作周期';
   $('#demo use').setAttribute('href', '#i-play');
   $('#demo-progress').style.width = '0%';
-  $('#presence-text').textContent = 'MIO 在线';
+  $('#presence-text').textContent = 'Eyes 在线';
 }
 
 function startDemo() {
@@ -201,7 +201,7 @@ document.addEventListener('keydown', (event) => {
 
 // Host integration boundary. The host may call these methods as its agent lifecycle changes.
 // No synthetic lifecycle events are treated as real work in this standalone preview.
-window.mio = Object.freeze({
+window.eyes = Object.freeze({
   setEmotion: (id) => selectEmotion(id),
   blink: (double = false) => eyes.blink(double),
   look: (x, y) => eyes.look(x, y),

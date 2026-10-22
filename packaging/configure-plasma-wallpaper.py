@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Move Plasma desktop wallpapers to MIO while preserving their images."""
+"""Move Plasma desktop wallpapers to Eyes while preserving their images."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 DESKTOP_PLUGIN = "org.kde.plasma.folder"
-WALLPAPER_PLUGIN = "com.mio.Eyes"
+WALLPAPER_PLUGIN = "org.eyes.wallpaper"
 
 
 def containment_sections(parser: configparser.RawConfigParser) -> list[tuple[str, str]]:
@@ -82,7 +82,7 @@ def main() -> int:
 
     config_path = args.config.expanduser()
     if not config_path.is_file():
-        print(f"MIO: Plasma desktop config not found: {config_path}", file=sys.stderr)
+        print(f"Eyes: Plasma desktop config not found: {config_path}", file=sys.stderr)
         return 1
 
     config = configparser.RawConfigParser(
@@ -96,7 +96,7 @@ def main() -> int:
     desktops = containment_sections(config)
     if not desktops:
         print(
-            "MIO: no Plasma desktop containment was found; panels were left untouched",
+            "Eyes: no Plasma desktop containment was found; panels were left untouched",
             file=sys.stderr,
         )
         return 1
@@ -113,7 +113,7 @@ def main() -> int:
 
     executable = shutil.which("kwriteconfig6")
     if executable is None and not args.dry_run:
-        print("MIO: kwriteconfig6 is required to configure Plasma", file=sys.stderr)
+        print("Eyes: kwriteconfig6 is required to configure Plasma", file=sys.stderr)
         return 1
 
     changed: list[str] = []
@@ -129,7 +129,7 @@ def main() -> int:
             image = fallback_image
         if not image:
             print(
-                f"MIO: containment {containment_id} has no readable image; skipped",
+                f"Eyes: containment {containment_id} has no readable image; skipped",
                 file=sys.stderr,
             )
             continue
@@ -155,10 +155,10 @@ def main() -> int:
         changed.append(containment_id)
 
     if not changed:
-        print("MIO: no desktop wallpaper image could be preserved", file=sys.stderr)
+        print("Eyes: no desktop wallpaper image could be preserved", file=sys.stderr)
         return 1
 
-    print(f"MIO: configured desktop containments: {', '.join(changed)}")
+    print(f"Eyes: configured desktop containments: {', '.join(changed)}")
     return 0
 
 

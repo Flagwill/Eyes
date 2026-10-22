@@ -1,4 +1,4 @@
-# MIO Preview Gallery
+# Eyes Preview Gallery
 
 These files are development snapshots used to check composition, eye geometry, attention, and surface light. They are not loaded by the application.
 

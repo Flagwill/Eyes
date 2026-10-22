@@ -9,7 +9,7 @@
       <default>false</default>
     </entry>
     <entry name="Image" type="String">
-      <label>The wallpaper rendered below MIO</label>
+      <label>The wallpaper rendered below Eyes</label>
       <default></default>
     </entry>
   </group>

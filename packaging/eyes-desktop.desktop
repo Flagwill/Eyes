@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=MIO Agent 双眼
+Name=Eyes
 Comment=在桌面上显示 Agent 工作状态
-Exec=mio show
-Icon=mio-desktop
+Exec=eyes show
+Icon=eyes-desktop
 Terminal=false
 Categories=Utility;
 StartupNotify=false

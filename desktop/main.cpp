@@ -33,7 +33,7 @@
 
 namespace {
 
-constexpr auto kSocketName = "mio-eyes.sock";
+constexpr auto kSocketName = "eyes.sock";
 constexpr quint16 kBridgePort = 38271;
 
 QString runtimeSocketPath()
@@ -47,7 +47,7 @@ QString runtimeSocketPath()
 
 struct AgentState {
     QString motion = QStringLiteral("idle");
-    QString eyebrow = QStringLiteral("MIO 在线");
+    QString eyebrow = QStringLiteral("Eyes 在线");
     QString title = QStringLiteral("随时准备出发");
     QString detail = QStringLiteral("收到任务后，我会在这里工作");
 
@@ -62,18 +62,18 @@ struct AgentState {
     }
 };
 
-class MioService final : public QObject
+class EyesService final : public QObject
 {
     Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "com.mio.Eyes")
+    Q_CLASSINFO("D-Bus Interface", "org.eyes.Desktop")
 
 public:
-    explicit MioService(QObject *parent = nullptr)
+    explicit EyesService(QObject *parent = nullptr)
         : QObject(parent)
         , m_attentionPosition(QCursor::pos())
         , m_pendingPointerPosition(m_attentionPosition)
     {
-        m_state.eyebrow = QStringLiteral("MIO 桌面上线");
+        m_state.eyebrow = QStringLiteral("Eyes 桌面上线");
         m_completionTimer.setSingleShot(true);
         m_completionTimer.setInterval(4500);
         connect(&m_completionTimer, &QTimer::timeout, this,
@@ -176,7 +176,7 @@ private:
     int m_actionSequence = 0;
 };
 
-QJsonObject MioService::applyCommand(const QString &line)
+QJsonObject EyesService::applyCommand(const QString &line)
 {
     const QString normalized = line.trimmed();
     if (normalized.isEmpty()) {
@@ -213,7 +213,7 @@ QJsonObject MioService::applyCommand(const QString &line)
                  QStringLiteral("这一步做得很好，准备继续下一件"), true);
         m_completionTimer.start();
     } else if (command == QLatin1String("idle")) {
-        setState(QStringLiteral("idle"), QStringLiteral("MIO 在线"),
+        setState(QStringLiteral("idle"), QStringLiteral("Eyes 在线"),
                  QStringLiteral("自在待命"),
                  QStringLiteral("收到任务后，我会重新出现"), false);
         setShown(false);
@@ -268,7 +268,7 @@ QJsonObject MioService::applyCommand(const QString &line)
                 {QStringLiteral("error"), QStringLiteral("unknown emotion")},
             };
         }
-        setState(emotion, QStringLiteral("MIO 神态"),
+        setState(emotion, QStringLiteral("Eyes 神态"),
                  QStringLiteral("正在表达"),
                  QStringLiteral("当前神态：%1").arg(emotion), true);
     } else if (command == QLatin1String("status")) {
@@ -278,7 +278,7 @@ QJsonObject MioService::applyCommand(const QString &line)
                  QStringLiteral("正在理解任务"),
                  QStringLiteral("完整的桌面工作周期预览"), true);
     } else if (command == QLatin1String("quit")) {
-        QTimer::singleShot(80, this, &MioService::quitRequested);
+        QTimer::singleShot(80, this, &EyesService::quitRequested);
     } else {
         return {
             {QStringLiteral("ok"), false},
@@ -300,34 +300,34 @@ class WallpaperBridge final : public QObject
     Q_OBJECT
 
 public:
-    explicit WallpaperBridge(MioService *service, QObject *parent = nullptr)
+    explicit WallpaperBridge(EyesService *service, QObject *parent = nullptr)
         : QObject(parent)
         , m_service(service)
-        , m_server(QStringLiteral("MIO wallpaper bridge"),
+        , m_server(QStringLiteral("Eyes wallpaper bridge"),
                    QWebSocketServer::NonSecureMode, this)
     {
         connect(&m_server, &QWebSocketServer::newConnection, this, [this] {
             while (QWebSocket *socket = m_server.nextPendingConnection())
                 addSocket(socket);
         });
-        connect(m_service, &MioService::stateChanged, this, [this] {
+        connect(m_service, &EyesService::stateChanged, this, [this] {
             broadcast({
                 {QStringLiteral("type"), QStringLiteral("state")},
                 {QStringLiteral("state"),
                  QJsonObject::fromVariantMap(m_service->stateMap())},
             });
         });
-        connect(m_service, &MioService::shownChanged, this, [this] {
+        connect(m_service, &EyesService::shownChanged, this, [this] {
             broadcast({
                 {QStringLiteral("type"), QStringLiteral("visible")},
                 {QStringLiteral("visible"), m_service->shown()},
             });
         });
-        connect(m_service, &MioService::attentionChanged, this, [this] {
+        connect(m_service, &EyesService::attentionChanged, this, [this] {
             for (QWebSocket *socket : std::as_const(m_sockets))
                 sendAttention(socket);
         });
-        connect(m_service, &MioService::actionTriggered, this,
+        connect(m_service, &EyesService::actionTriggered, this,
                 [this](const QJsonObject &action) {
                     broadcast(action);
                 });
@@ -346,7 +346,7 @@ public:
         if (m_server.listen(QHostAddress::LocalHost, kBridgePort))
             return true;
         qWarning().noquote()
-            << "Unable to start MIO wallpaper bridge on port"
+            << "Unable to start Eyes wallpaper bridge on port"
             << kBridgePort << ":" << m_server.errorString();
         return false;
     }
@@ -357,7 +357,7 @@ private:
         const QString screenName =
             QUrlQuery(socket->requestUrl())
                 .queryItemValue(QStringLiteral("screen"));
-        socket->setProperty("mioScreenName", screenName);
+        socket->setProperty("eyesScreenName", screenName);
         m_sockets.append(socket);
         connect(socket, &QWebSocket::disconnected, this,
                 [this, socket] {
@@ -382,7 +382,7 @@ private:
     QJsonObject attentionFor(const QWebSocket *socket) const
     {
         const QString screenName =
-            socket->property("mioScreenName").toString();
+            socket->property("eyesScreenName").toString();
         QScreen *target = QGuiApplication::primaryScreen();
         if (!screenName.isEmpty()) {
             for (QScreen *screen : QGuiApplication::screens()) {
@@ -431,7 +431,7 @@ private:
             QJsonDocument(object).toJson(QJsonDocument::Compact));
     }
 
-    MioService *m_service;
+    EyesService *m_service;
     QWebSocketServer m_server;
     QList<QWebSocket *> m_sockets;
 };
@@ -464,7 +464,7 @@ public:
         setupCursorDBus();
         setupTray();
 
-        connect(&m_service, &MioService::quitRequested,
+        connect(&m_service, &EyesService::quitRequested,
                 m_application, &QCoreApplication::quit);
         connect(m_application, &QCoreApplication::aboutToQuit, this, [this] {
             if (m_server) {
@@ -540,7 +540,7 @@ private:
         QDBusConnection bus = QDBusConnection::sessionBus();
         if (!bus.isConnected())
             return;
-        bus.registerService(QStringLiteral("com.mio.Eyes"));
+        bus.registerService(QStringLiteral("org.eyes.Desktop"));
         bus.registerObject(QStringLiteral("/Cursor"), &m_service,
                            QDBusConnection::ExportAllSlots);
     }
@@ -550,8 +550,8 @@ private:
         if (!QSystemTrayIcon::isSystemTrayAvailable())
             return;
         m_tray = new QSystemTrayIcon(
-            QIcon(QStringLiteral(":/desktop/mio-tray.svg")), this);
-        m_tray->setToolTip(QStringLiteral("MIO Agent 双眼"));
+            QIcon(QStringLiteral(":/desktop/eyes-tray.svg")), this);
+        m_tray->setToolTip(QStringLiteral("Eyes"));
         auto *menu = new QMenu;
         menu->addAction(QStringLiteral("显示双眼"), this,
                         [this] { m_service.setShown(true); });
@@ -577,7 +577,7 @@ private:
     QString m_socketPath;
     std::unique_ptr<QLockFile> m_lockFile;
     QLocalServer *m_server = nullptr;
-    MioService m_service;
+    EyesService m_service;
     WallpaperBridge *m_wallpaperBridge = nullptr;
     QSystemTrayIcon *m_tray = nullptr;
 };
@@ -609,14 +609,14 @@ void DesktopApplication::playDemo()
 int main(int argc, char *argv[])
 {
     QApplication application(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("mio-desktop"));
-    QApplication::setApplicationDisplayName(QStringLiteral("MIO Agent 双眼"));
-    QApplication::setOrganizationName(QStringLiteral("MIO"));
+    QApplication::setApplicationName(QStringLiteral("eyes-desktop"));
+    QApplication::setApplicationDisplayName(QStringLiteral("Eyes"));
+    QApplication::setOrganizationName(QStringLiteral("Eyes"));
     QApplication::setQuitOnLastWindowClosed(false);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(
-        QStringLiteral("MIO wallpaper-state host for the agent harness"));
+        QStringLiteral("Eyes wallpaper-state host for the agent harness"));
     parser.addHelpOption();
     parser.addVersionOption();
     const QCommandLineOption hiddenOption(

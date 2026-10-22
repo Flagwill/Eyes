@@ -19,4 +19,4 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404).end('Not found');
   }
 });
-server.listen(Number(process.env.PORT) || 5173, '127.0.0.1', () => console.log('MIO is ready at http://127.0.0.1:5173'));
+server.listen(Number(process.env.PORT) || 5173, '127.0.0.1', () => console.log('Eyes is ready at http://127.0.0.1:5173'));

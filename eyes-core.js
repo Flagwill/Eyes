@@ -1,10 +1,10 @@
 /*
- * Shared MIO eye engine.
+ * Shared Eyes eye engine.
  *
  * This file is deliberately a classic JavaScript library so the browser
  * wrapper in eyes.js and Plasma's QML JavaScript engine can both load it.
  */
-var MioEyesCore = (function () {
+var EyesCore = (function () {
   var EMOTIONS = [
     { id: 'idle', name: '自在待命', short: '待命', description: '我在这里，随时准备出发。' },
     { id: 'happy', name: '有点开心', short: '开心', description: '好耶！又一起完成了一件小事。' },
@@ -616,11 +616,6 @@ var MioEyesCore = (function () {
     ctx.translate(this.layout.centerX, this.layout.centerY);
     ctx.scale(this.scale, this.scale * this.layout.stretchY);
 
-    var halo = ctx.createRadialGradient(0, 0, 25, 0, 0, 285);
-    halo.addColorStop(0, 'rgba(160,99,236,' + (0.04 + pose.glow * 0.025) + ')');
-    halo.addColorStop(1, 'rgba(160,99,236,0)');
-    ctx.fillStyle = halo;
-    ctx.fillRect(-285, -285, 570, 570);
     ctx.save();
     ctx.translate(pose.gazeX, pose.gazeY * this.layout.gazeScaleY);
     ctx.rotate(pose.tilt);
@@ -637,18 +632,12 @@ var MioEyesCore = (function () {
       ctx.translate(pose[side + 'x'], pose[side + 'y']);
       ctx.rotate(pose[side + 'r']);
       eyePath(ctx, width, height, bend);
-      ctx.shadowColor = 'rgba(153,84,235,' + (0.14 + pose.glow * 0.19) + ')';
-      ctx.shadowBlur = 9 + pose.glow * 13;
       var surface = ctx.createLinearGradient(0, -height / 2 - bend, 0, height / 2);
       surface.addColorStop(0, '#9e66e5');
       surface.addColorStop(0.55, '#9256e0');
       surface.addColorStop(1, '#8c50d9');
       ctx.fillStyle = surface;
-      if (typeof ctx.filter === 'string')
-        ctx.filter = 'blur(' + Math.min(width, height) * 0.035 * this.scale * this.dpr + 'px)';
       ctx.fill();
-      if (typeof ctx.filter === 'string') ctx.filter = 'none';
-      ctx.shadowBlur = 0;
       ctx.save();
       ctx.clip();
       drawLight(ctx, this, pose, width, height, bend, side, this.lightTime, blink);
@@ -684,6 +673,6 @@ var MioEyesCore = (function () {
     drawLight: drawLight,
     drawAccents: drawAccents,
   };
-  if (typeof globalThis !== 'undefined') globalThis.MioEyesCore = api;
+  if (typeof globalThis !== 'undefined') globalThis.EyesCore = api;
   return api;
 })();

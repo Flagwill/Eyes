@@ -7,9 +7,9 @@ Item {
 
     required property var simulation
     property var frame: null
-    readonly property var pose: frame ? frame.pose : EyeCore.MioEyesCore.getPose("idle")
+    readonly property var pose: frame ? frame.pose : EyeCore.EyesCore.getPose("idle")
     readonly property real blink: frame ? frame.blink : 0
-    readonly property var layout: EyeCore.MioEyesCore.getLayout(width, height, true)
+    readonly property var layout: EyeCore.EyesCore.getLayout(width, height, true)
     readonly property real modelScale: layout.scale
 
     function advance(delta) {
@@ -45,20 +45,20 @@ Item {
                     required property string modelData
                     readonly property real breathe: scene.frame && scene.frame.alive
                         ? Math.sin(scene.simulation.elapsed * 1.4) * 0.006 * scene.simulation.energy : 0
-                    readonly property var geometry: EyeCore.MioEyesCore.getEyeGeometry(
+                    readonly property var geometry: EyeCore.EyesCore.getEyeGeometry(
                         scene.pose, modelData, scene.blink, breathe)
                     readonly property real eyeWidth: geometry.width
                     readonly property real eyeHeight: geometry.height
                     readonly property real bend: geometry.bend
-                    readonly property var light: EyeCore.MioEyesCore.getLight(
+                    readonly property var light: EyeCore.EyesCore.getLight(
                         scene.pose, scene.simulation.lightTime, modelData)
-                    readonly property var lightShape: EyeCore.MioEyesCore.getLightGeometry(
+                    readonly property var lightShape: EyeCore.EyesCore.getLightGeometry(
                         light, eyeWidth, eyeHeight, bend)
-                    readonly property var fragments: EyeCore.MioEyesCore.getLightFragments(
+                    readonly property var fragments: EyeCore.EyesCore.getLightFragments(
                         scene.pose, scene.simulation.flowTime, modelData)
-                    readonly property var fragmentA: EyeCore.MioEyesCore.getLightGeometry(
+                    readonly property var fragmentA: EyeCore.EyesCore.getLightGeometry(
                         fragments[0], eyeWidth, eyeHeight, bend)
-                    readonly property var fragmentB: EyeCore.MioEyesCore.getLightGeometry(
+                    readonly property var fragmentB: EyeCore.EyesCore.getLightGeometry(
                         fragments[1], eyeWidth, eyeHeight, bend)
                     readonly property real padding: 40
                     x: scene.pose[modelData + "x"]
@@ -109,7 +109,7 @@ Item {
                     ctx.reset();
                     ctx.clearRect(0, 0, width, height);
                     ctx.translate(280, 180);
-                    EyeCore.MioEyesCore.drawAccents(ctx, scene.pose,
+                    EyeCore.EyesCore.drawAccents(ctx, scene.pose,
                         scene.frame && scene.frame.alive ? scene.simulation.elapsed : 0);
                     hadAccents = scene.pose.thinking + scene.pose.happy + scene.pose.curious +
                         scene.pose.surprised + scene.pose.sleepy + scene.pose.confused > 0.001;

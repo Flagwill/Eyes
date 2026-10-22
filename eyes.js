@@ -1,6 +1,6 @@
 import './eyes-core.js';
 
-const core = globalThis.MioEyesCore;
+const core = globalThis.EyesCore;
 
 export const EMOTIONS = core.EMOTIONS;
 export const Spring = core.Spring;

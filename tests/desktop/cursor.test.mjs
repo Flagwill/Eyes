@@ -6,12 +6,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-// Run in a private D-Bus session with MIO stopped: this exercises the actual
+// Run in a private D-Bus session with Eyes stopped: this exercises the actual
 // host's pointer fallback and its 32 ms coalescing, without moving the mouse.
 test('stationary KWin attention survives fallback ticks and reconnects', async (t) => {
-  const runtime = mkdtempSync(join(tmpdir(), 'mio-cursor-test-'));
+  const runtime = mkdtempSync(join(tmpdir(), 'eyes-cursor-test-'));
   const env = { ...process.env, XDG_RUNTIME_DIR: runtime, QT_QPA_PLATFORM: 'offscreen' };
-  const host = spawn(resolve('build/mio-desktop'), ['--hidden'], { env, stdio: 'ignore' });
+  const host = spawn(resolve('build/eyes-desktop'), ['--hidden'], { env, stdio: 'ignore' });
   let socket;
   t.after(async () => {
     socket?.close();
@@ -37,17 +37,17 @@ test('stationary KWin attention survives fallback ticks and reconnects', async (
   }
 
   for (let attempt = 0; attempt < 40; ++attempt) {
-    if (!existsSync(join(runtime, 'mio-eyes.sock'))) { await delay(50); continue; }
+    if (!existsSync(join(runtime, 'eyes.sock'))) { await delay(50); continue; }
     try { socket = await connect(); break; } catch { await delay(50); }
   }
   assert.ok(socket, 'headless host must start; stop the desktop host before this test');
-  const client = resolve('bin/mio');
+  const client = resolve('bin/eyes');
   execFileSync(client, ['show'], { env });
   await delay(850);
   assert.equal(samples.at(-1).active, false, 'unknown cursor must not target the origin');
 
   const qdbus = join(process.env.QT6_BIN_DIR || '/usr/lib/qt6/bin', 'qdbus');
-  execFileSync(qdbus, ['com.mio.Eyes', '/Cursor', 'com.mio.Eyes.SetPosition', '320', '240'], { env });
+  execFileSync(qdbus, ['org.eyes.Desktop', '/Cursor', 'org.eyes.Desktop.SetPosition', '320', '240'], { env });
   await delay(100);
   const first = samples.length;
   await delay(1600);

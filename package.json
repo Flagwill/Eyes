@@ -1,5 +1,5 @@
 {
-  "name": "mio-eyes",
+  "name": "eyes",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "desktop:build": "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build -j2",
     "desktop:test": "npm run desktop:build && \"${QT6_BIN_DIR:-/usr/lib/qt6/bin}/qmltestrunner\" -input tests/qml -o -,txt",
     "desktop:cursor:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/cursor.test.mjs",
-    "desktop": "npm run desktop:build && ./bin/mio show",
+    "desktop": "npm run desktop:build && ./bin/eyes show",
     "desktop:install": "bash packaging/install-user.sh"
   }
 }

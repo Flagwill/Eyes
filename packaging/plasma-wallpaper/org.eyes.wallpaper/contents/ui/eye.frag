@@ -39,9 +39,10 @@ float surfaceLight(vec2 p, vec4 geometry, vec4 detail) {
 void main() {
     vec2 p = qt_TexCoord0 * surfaceSize + surfaceOrigin;
     vec2 edges = bandEdges(p, eyeGeometry.xy, eyeGeometry.z);
-    float aa = max(fwidth(edges.x), fwidth(edges.y));
-    float softness = max(aa, min(eyeGeometry.x, eyeGeometry.y) * 0.045);
-    float coverage = softBand(edges, softness);
+    // Only pixel-sized antialiasing; no feather, blur, or outer glow.
+    vec2 pixelWidth = max(fwidth(edges), vec2(0.0001));
+    vec2 edgeCoverage = clamp(vec2(0.5) - edges / pixelWidth, vec2(0.0), vec2(1.0));
+    float coverage = edgeCoverage.x * edgeCoverage.y;
 
     float surfaceY = p.y + eyeGeometry.z *
         (1.0 - 4.0 * p.x * p.x / (eyeGeometry.x * eyeGeometry.x));
@@ -57,10 +58,5 @@ void main() {
     light += surfaceLight(p, fragmentGeometryB, fragmentDetailB);
     color = mix(color, vec3(220.0, 183.0, 251.0) / 255.0, light);
 
-    float glowWidth = 12.0 + eyeGeometry.w * 10.0;
-    float glow = softBand(edges, glowWidth) * (0.08 + eyeGeometry.w * 0.12);
-    float alpha = coverage + glow * (1.0 - coverage);
-    vec3 premultiplied = color * coverage +
-        vec3(153.0, 84.0, 235.0) / 255.0 * glow * (1.0 - coverage);
-    fragColor = vec4(premultiplied, alpha) * qt_Opacity;
+    fragColor = vec4(color * coverage, coverage) * qt_Opacity;
 }

@@ -11,12 +11,12 @@ WallpaperItem {
     property bool shown: false
     property real reveal: shown ? 1 : 0
     property var hostState: ({
-        "eyebrow": "MIO 在线",
+        "eyebrow": "Eyes 在线",
         "title": "随时准备出发",
         "detail": "收到任务后，我会在这里工作",
         "motion": "idle"
     })
-    property var simulation: EyeCore.MioEyesCore.createSimulation({
+    property var simulation: EyeCore.EyesCore.createSimulation({
         "immersive": true,
         "reducedMotion": false
     })
@@ -26,7 +26,7 @@ WallpaperItem {
     property var frameSamples: []
     property real performanceSince: 0
 
-    Component.onCompleted: console.info("MIO GPU wallpaper loaded", Screen.name)
+    Component.onCompleted: console.info("Eyes GPU wallpaper loaded", Screen.name)
 
     Behavior on reveal {
         NumberAnimation {
@@ -105,7 +105,7 @@ WallpaperItem {
 
         Column {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: EyeCore.MioEyesCore.getLayout(
+            y: EyeCore.EyesCore.getLayout(
                 root.width,
                 root.height,
                 true
@@ -127,7 +127,7 @@ WallpaperItem {
                 }
 
                 Text {
-                    text: String(root.hostState.eyebrow || "MIO")
+                    text: String(root.hostState.eyebrow || "Eyes")
                     color: Qt.rgba(0.31, 0.23, 0.41, 0.57)
                     font.family: "sans-serif"
                     font.pixelSize: Math.max(10, Math.min(16, root.width * 0.006))
@@ -174,7 +174,7 @@ WallpaperItem {
             anchors.top: parent.top
             anchors.rightMargin: root.width * 0.042
             anchors.topMargin: root.height * 0.042
-            text: "MIO"
+            text: "Eyes"
             color: Qt.rgba(0.27, 0.20, 0.35, 0.31)
             font.pixelSize: Math.max(8, Math.min(12, root.width * 0.0048))
             font.letterSpacing: Math.max(1.2, root.width * 0.0012)
@@ -206,7 +206,7 @@ WallpaperItem {
         frameSamples.push(delta * 1000);
         if (now - performanceSince < 5000) return;
         var samples = frameSamples.slice().sort(function(a, b) { return a - b; });
-        console.info("MIO_PERF GPU screen=" + Screen.name +
+        console.info("EYES_PERF GPU screen=" + Screen.name +
             " fps=" + (1000 * samples.length / (now - performanceSince)).toFixed(1) +
             " p95_ms=" + samples[Math.floor(samples.length * 0.95)].toFixed(1));
         frameSamples = [];
@@ -231,7 +231,7 @@ WallpaperItem {
             try {
                 root.handleMessage(JSON.parse(message));
             } catch (error) {
-                console.warn("MIO bridge ignored a malformed message:", error);
+                console.warn("Eyes bridge ignored a malformed message:", error);
             }
         }
     }
@@ -304,7 +304,7 @@ WallpaperItem {
         var clientX = Number(attention.x);
         var clientY = Number(attention.y);
         if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return;
-        var gaze = EyeCore.MioEyesCore.getPointerGaze(
+        var gaze = EyeCore.EyesCore.getPointerGaze(
             clientX,
             clientY,
             {"left": 0, "top": 0, "width": width, "height": height},

@@ -1,16 +1,16 @@
 import QtQuick
 import QtTest
-import "../../build/wallpaper-ui" as Mio
+import "../../build/wallpaper-ui" as Eyes
 import "../../eyes-core.js" as Core
 
 Item {
     width: 1000
     height: 700
 
-    Mio.EyeScene {
+    Eyes.EyeScene {
         id: eyes
         anchors.fill: parent
-        simulation: Core.MioEyesCore.createSimulation({reducedMotion: true})
+        simulation: Core.EyesCore.createSimulation({reducedMotion: true})
     }
 
     TestCase {
@@ -18,7 +18,7 @@ Item {
         when: windowShown
 
         function test_emotions_data() {
-            return Core.MioEyesCore.EMOTIONS.map(function(emotion) {
+            return Core.EyesCore.EMOTIONS.map(function(emotion) {
                 return { tag: emotion.id };
             });
         }
@@ -65,38 +65,41 @@ Item {
             verify(surface.eyeGeometry.y > openHeight * 0.99);
         }
 
-        function test_soft_edges() {
+        function test_crisp_silhouette_data() {
+            return test_emotions_data();
+        }
+
+        function test_crisp_silhouette(data) {
             eyes.simulation.autonomous = false;
             eyes.simulation.setPointer(0, 0, false);
-            eyes.simulation.setEmotion("idle");
+            eyes.simulation.setEmotion(data.tag);
             for (var i = 0; i < 240; ++i) eyes.advance(1 / 60);
             wait(50);
             var pixels = grabImage(eyes);
-            var surface = findChild(eyes, "eyeSurface-l");
-            var previous = -1;
-            for (var offset of [-8, -4, 0, 4, 8]) {
-                var point = surface.mapToItem(eyes,
-                    -surface.surfaceOrigin.x - surface.eyeGeometry.x / 2 - offset,
-                    -surface.surfaceOrigin.y);
-                var green = pixels.green(Math.round(point.x * pixels.width / eyes.width),
-                    Math.round(point.y * pixels.height / eyes.height));
-                verify(green > previous + 3, "Eye edge must fade gradually into the background");
-                previous = green;
+            for (var side of ["l", "r"]) {
+                var surface = findChild(eyes, "eyeSurface-" + side);
+                var width = surface.eyeGeometry.x;
+                var height = surface.eyeGeometry.y;
+                // Sample both sides of every edge, away from the corners.
+                for (var axis of ["x", "y"]) for (var sign of [-1, 1]) {
+                    var origin = surface.mapToItem(eyes, 0, 0);
+                    var step = surface.mapToItem(eyes, axis === "x" ? 1 : 0, axis === "y" ? 1 : 0);
+                    var pixelsPerUnit = Math.hypot((step.x - origin.x) * pixels.width / eyes.width,
+                        (step.y - origin.y) * pixels.height / eyes.height);
+                    var inset = 2 / pixelsPerUnit;
+                    for (var inside of [true, false]) {
+                        var offset = inside ? -inset : inset;
+                        var x = axis === "x" ? sign * (width / 2 + offset) : 0;
+                        var y = axis === "y" ? sign * (height / 2 + offset) - surface.eyeGeometry.z : 0;
+                        var point = surface.mapToItem(eyes,
+                            x - surface.surfaceOrigin.x, y - surface.surfaceOrigin.y);
+                        var green = pixels.green(Math.round(point.x * pixels.width / eyes.width),
+                            Math.round(point.y * pixels.height / eyes.height));
+                        if (inside) verify(green < 145, "Eye must be solid purple two pixels inside its contour");
+                        else compare(green, 255, "Two pixels outside the contour must be clear, without feather or glow");
+                    }
+                }
             }
-            var middle = surface.mapToItem(eyes,
-                -surface.surfaceOrigin.x - surface.eyeGeometry.x / 2,
-                -surface.surfaceOrigin.y);
-            var corner = surface.mapToItem(eyes,
-                -surface.surfaceOrigin.x - surface.eyeGeometry.x / 2,
-                -surface.surfaceOrigin.y - surface.eyeGeometry.y / 2);
-            var middleContrast = 255 - pixels.green(
-                Math.round(middle.x * pixels.width / eyes.width),
-                Math.round(middle.y * pixels.height / eyes.height));
-            var cornerContrast = 255 - pixels.green(
-                Math.round(corner.x * pixels.width / eyes.width),
-                Math.round(corner.y * pixels.height / eyes.height));
-            verify(cornerContrast < middleContrast * 0.72,
-                "Two soft edges must fade together at the corner without a pointed flare");
         }
     }
 }
