@@ -1,0 +1,18 @@
+{
+  "KPackageStructure": "KWin/Script",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "MIO"
+      }
+    ],
+    "Description": "将 Wayland 全局光标位置提供给 MIO 双眼注意力动画",
+    "EnabledByDefault": true,
+    "Icon": "input-mouse",
+    "Id": "mio-eyes-cursor",
+    "License": "MIT",
+    "Name": "MIO Agent Eyes Cursor",
+    "Version": "0.1.0"
+  },
+  "X-Plasma-API": "javascript"
+}

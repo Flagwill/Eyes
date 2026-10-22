@@ -1,0 +1,25 @@
+# Local desktop build
+/build/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Agent and session-specific mounts
+.agents/
+.aws/
+.codex/
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log

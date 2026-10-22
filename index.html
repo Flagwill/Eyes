@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4f8">
+  <title>MIO — 有灵气的 Agent 双眼</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-cursor" viewBox="0 0 24 24"><path d="m5 3 14 10-7 1-3 7Z"/></symbol>
+  </defs></svg>
+
+  <header class="app-header">
+    <a class="brand" href="./" aria-label="MIO 首页"><span class="brand-mark"><i></i><i></i></span><span>mio<span class="brand-period">.</span></span></a>
+    <div class="header-divider"></div><span class="header-caption">AGENT PRESENCE LAB</span>
+    <span class="edition">EXPERIMENT 001 <span>／</span> 眼睛与情绪</span>
+    <span class="prototype"><span class="status-dot"></span> 本地动态原型 <span class="version">v0.1</span></span>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div><div class="eyebrow">A LITTLE PRESENCE. A LITTLE PERSONALITY.</div><h1>让工作，多一点灵气<span>。</span></h1><p>一双会思考、会好奇，也会为你开心的眼睛。</p></div>
+      <button class="button subtle" id="immersive"><svg><use href="#i-expand"/></svg>进入沉浸模式 <kbd>F</kbd></button>
+    </section>
+
+    <section class="stage" id="stage" aria-label="紫色机器人双眼动画预览">
+      <div class="wallpaper" aria-hidden="true"><div class="orb orb-one"></div><div class="orb orb-two"></div><div class="orb orb-three"></div><div class="wallpaper-line"></div></div>
+      <div class="glass" id="glass"></div>
+      <div class="stage-top"><span class="stage-label"><span class="live-dot"></span> LIVE CANVAS <span class="label-line"></span><span id="scene-label">磨砂桌面</span></span><span class="stage-hint">移动鼠标，打个招呼</span></div>
+      <canvas id="eyes" role="img" aria-label="待命中的紫色双眼"></canvas>
+      <div class="emotion-caption" aria-live="polite"><span id="emotion-name">自在待命</span><span id="emotion-description">我在这里，随时准备出发。</span></div>
+      <div class="stage-side" aria-label="预览设置">
+        <button class="icon-button selected" id="follow" aria-pressed="true" aria-label="跟随鼠标" title="跟随鼠标"><svg><use href="#i-cursor"/></svg></button>
+        <button class="icon-button" id="backdrop" aria-label="切换壁纸配色" title="切换壁纸配色"><svg><use href="#i-spark"/></svg></button>
+        <button class="icon-button" id="reset" aria-label="恢复默认" title="恢复默认"><svg><use href="#i-reset"/></svg></button>
+      </div>
+      <div class="stage-bottom"><span class="presence"><span></span><span id="presence-text">MIO 在线</span></span><span class="stage-note">轻点双眼 · 收获一点开心</span><span class="coordinates">SPRING MOTION <span>∞</span></span></div>
+      <div class="demo-progress" id="demo-progress"></div>
+    </section>
+
+    <section class="studio" aria-label="动画控制台">
+      <div class="studio-heading"><div><span class="section-index">01</span><h2>此刻，是什么心情？</h2><span class="section-subtitle">每一种神态，都有自己的节奏</span></div><button id="autonomy" class="toggle-control" aria-pressed="true"><span class="toggle"><i></i></span> 自然小动作</button></div>
+      <div class="emotions" id="emotions"></div>
+      <div class="tools-row">
+        <div class="motion-tools"><span class="tool-label">小动作</span><button class="button action" id="blink"><svg><use href="#i-eye"/></svg>眨眨眼 <kbd>空格</kbd></button><div class="gaze-pad" role="group" aria-label="视线方向"><button data-look="-1,-1" aria-label="看左上">↖</button><button data-look="0,-1" aria-label="向上看">↑</button><button data-look="1,-1" aria-label="看右上">↗</button><button data-look="-1,0" aria-label="向左看">←</button><button data-look="0,0" aria-label="看正前方">·</button><button data-look="1,0" aria-label="向右看">→</button><button data-look="-1,1" aria-label="看左下">↙</button><button data-look="0,1" aria-label="向下看">↓</button><button data-look="1,1" aria-label="看右下">↘</button></div><span class="look-label">四处看看</span></div>
+        <div class="range-control"><label for="energy">活泼程度 <output id="energy-value">65%</output></label><input id="energy" type="range" min="0" max="100" value="65" aria-label="活泼程度"></div>
+        <div class="range-control frost-control"><label for="frost">磨砂浓度 <output id="frost-value">56%</output></label><input id="frost" type="range" min="0" max="100" value="56" aria-label="磨砂浓度"></div>
+        <button class="button primary" id="demo"><svg><use href="#i-play"/></svg><span>演示工作周期</span></button>
+      </div>
+    </section>
+    <footer><span><span class="footer-dot"></span> 不只是状态指示，更是一点陪伴。</span><span><kbd>1</kbd>—<kbd>8</kbd> 切换神态 <span class="footer-separator">／</span><kbd>↑↓←→</kbd> 移动视线 <span class="footer-separator">／</span><kbd>F</kbd> 沉浸</span></footer>
+  </main>
+  <button class="button immersive-exit" id="exit-immersive"><svg><use href="#i-close"/></svg>退出沉浸 <kbd>Esc</kbd></button>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

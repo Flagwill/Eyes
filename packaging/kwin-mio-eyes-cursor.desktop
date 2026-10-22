@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Service
+Name=MIO Agent 双眼光标
+Comment=将 Wayland 全局光标位置提供给 MIO 注意力动画
+X-KDE-ServiceTypes=KWin/Script
+X-KDE-PluginInfo-Author=MIO
+X-KDE-PluginInfo-Name=mio-eyes-cursor
+X-KDE-PluginInfo-Version=0.1.0
+X-KDE-PluginInfo-EnabledByDefault=true

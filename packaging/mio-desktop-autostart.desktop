@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MIO Agent 双眼
+Comment=登录后等待 Agent 工作状态
+Exec=mio-desktop --hidden
+Icon=mio-desktop
+Terminal=false
+X-KDE-autostart-after=panel
+StartupNotify=false

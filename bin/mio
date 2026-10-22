@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Control the MIO desktop eye overlay."""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def runtime_socket() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        return Path(runtime) / "mio-eyes.sock"
+    return Path("/tmp") / f"mio-eyes-{os.getuid()}.sock"
+
+
+def executable_candidates() -> list[Path]:
+    explicit = os.environ.get("MIO_DESKTOP_BIN")
+    script_dir = Path(__file__).resolve().parent
+    project = script_dir.parent if script_dir.name == "bin" else script_dir
+    values = [
+        explicit,
+        script_dir / "mio-desktop",
+        project / "build" / "mio-desktop",
+        shutil.which("mio-desktop"),
+    ]
+    return [Path(value) for value in values if value]
+
+
+def launch_desktop() -> None:
+    executable = next(
+        (
+            path
+            for path in executable_candidates()
+            if path.is_file() and os.access(path, os.X_OK)
+        ),
+        None,
+    )
+    if executable is None:
+        raise SystemExit(
+            "找不到 mio-desktop。请先运行 npm run desktop:build，"
+            "或重新安装桌面组件。"
+        )
+
+    cache = Path(
+        os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
+    ) / "mio-eyes"
+    cache.mkdir(parents=True, exist_ok=True)
+    log = (cache / "desktop.log").open("ab")
+    subprocess.Popen(
+        [str(executable), "--hidden"],
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=log,
+        close_fds=True,
+        start_new_session=True,
+    )
+
+
+def connect(timeout: float) -> socket.socket:
+    sock_path = runtime_socket()
+    deadline = time.monotonic() + timeout
+    while True:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            client.connect(str(sock_path))
+            return client
+        except OSError:
+            client.close()
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.12)
+
+
+def send(command: str, *, autostart: bool = True) -> dict:
+    try:
+        client = connect(0.05)
+    except OSError:
+        if not autostart:
+            return {"ok": False, "running": False}
+        launch_desktop()
+        client = connect(8.0)
+
+    with client:
+        client.sendall((command.strip() + "\n").encode("utf-8"))
+        client.shutdown(socket.SHUT_WR)
+        chunks = []
+        while True:
+            chunk = client.recv(4096)
+            if not chunk:
+                break
+            chunks.append(chunk)
+
+    raw = b"".join(chunks).strip()
+    if not raw:
+        return {"ok": True, "running": True}
+    return json.loads(raw.decode("utf-8"))
+
+
+def usage() -> str:
+    return """用法:
+  mio show | hide | toggle
+  mio start | thinking | working | waiting | complete | idle
+  mio blink [double]
+  mio look X Y [SECONDS]       X/Y 范围 -1 到 1
+  mio emotion ID
+  mio status
+  mio demo
+  mio quit
+
+直接运行 mio 等同于 mio show。"""
+
+
+def main() -> int:
+    aliases = {
+        "desktop": "show",
+        "preview": "show",
+        "done": "complete",
+    }
+    command = "show" if len(sys.argv) == 1 else " ".join(sys.argv[1:]).strip()
+    command = aliases.get(command, command)
+
+    if command in {"-h", "--help", "help"}:
+        print(usage())
+        return 0
+
+    primary_command = command.split(maxsplit=1)[0]
+    try:
+        response = send(command, autostart=primary_command != "status")
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"MIO 桌面组件连接失败：{error}", file=sys.stderr)
+        return 1
+
+    if primary_command == "status":
+        print(json.dumps(response, ensure_ascii=False, indent=2))
+        return 0 if response.get("running") is not False else 1
+    if not response.get("ok", True):
+        print(response.get("error", "命令执行失败"), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
