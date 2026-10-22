@@ -48,6 +48,49 @@ def launch_desktop() -> None:
             "或重新安装桌面组件。"
         )
 
+    systemd_run = shutil.which("systemd-run")
+    systemctl = shutil.which("systemctl")
+    if systemd_run and systemctl:
+        manager_ready = subprocess.run(
+            [systemctl, "--user", "show-environment"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode == 0
+        if manager_ready:
+            command = [
+                systemd_run,
+                "--user",
+                "--unit=mio-desktop",
+                "--collect",
+                "--quiet",
+                "--description=MIO Agent Eyes",
+                str(executable),
+                "--hidden",
+            ]
+            for variable in (
+                "DISPLAY",
+                "WAYLAND_DISPLAY",
+                "XAUTHORITY",
+                "DBUS_SESSION_BUS_ADDRESS",
+                "XDG_RUNTIME_DIR",
+                "XDG_CURRENT_DESKTOP",
+                "XDG_SESSION_TYPE",
+            ):
+                value = os.environ.get(variable)
+                if value:
+                    command.insert(-2, f"--setenv={variable}={value}")
+            launched = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if launched.returncode == 0:
+                return
+
     cache = Path(
         os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
     ) / "mio-eyes"
@@ -107,6 +150,7 @@ def usage() -> str:
     return """用法:
   mio show | hide | toggle
   mio start | thinking | working | waiting | complete | idle
+  mio host-start
   mio blink [double]
   mio look X Y [SECONDS]       X/Y 范围 -1 到 1
   mio emotion ID
@@ -131,6 +175,22 @@ def main() -> int:
         return 0
 
     primary_command = command.split(maxsplit=1)[0]
+
+    if primary_command == "host-start":
+        try:
+            with connect(0.05):
+                pass
+        except OSError:
+            launch_desktop()
+            try:
+                with connect(8.0):
+                    pass
+            except OSError as error:
+                print(f"MIO 桌面组件启动失败：{error}", file=sys.stderr)
+                return 1
+        print("MIO 后台已启动")
+        return 0
+
     try:
         response = send(command, autostart=primary_command != "status")
     except (OSError, ValueError, json.JSONDecodeError) as error:

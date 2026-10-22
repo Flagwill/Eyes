@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Spring, getPose, blinkAmount, getLayout, getPointerGaze, getAttentionPose, getLight, getLightGeometry, eyePath, Eyes, EMOTIONS, attentionEnvelope, getAmbientGaze } from '../eyes.js';
+import { Spring, EyeSimulation, drawLight, getPose, blinkAmount, getLayout, getPointerGaze, getAttentionPose, getLight, getLightGeometry, getLightFragments, eyePath, EMOTIONS, attentionEnvelope, getAmbientGaze } from '../eyes.js';
 
 test('every emotion shares a finite morphable pose with positive eye sizes', () => {
   const keys = Object.keys(getPose('idle'));
@@ -87,14 +87,15 @@ test('fullscreen eyes scale with the display and stay central with room for ever
   for (const [width, height] of [[375, 812], [1440, 900], [1920, 1080], [3440, 1440], [1920, 600]]) {
     const layout = getLayout(width, height, true);
     assert.equal(layout.centerX, width / 2);
-    assert.equal(layout.centerY, height / 2);
+    assert.equal(layout.centerY, height * 0.43);
+    assert.ok(layout.stretchY > 1.2, 'fullscreen eyes should be elongated');
     for (const emotion of EMOTIONS) {
       const pose = getPose(emotion.id);
       for (const side of ['l', 'r']) {
         const horizontalExtent = Math.abs(pose[`${side}x`]) + pose[`${side}w`] / 2 + Math.abs(pose.gazeX) + 28 + 16;
         const verticalExtent = Math.abs(pose[`${side}y`]) + pose[`${side}h`] / 2 + pose[`${side}a`] + 19 + 16;
         assert.ok(horizontalExtent * layout.scale < width / 2, `${width}×${height}: ${emotion.id} fits horizontally`);
-        assert.ok(verticalExtent * layout.scale < height / 2, `${width}×${height}: ${emotion.id} fits vertically`);
+        assert.ok(verticalExtent * layout.scale * layout.stretchY < Math.min(layout.centerY, height - layout.centerY), `${width}×${height}: ${emotion.id} fits vertically`);
       }
     }
   }
@@ -121,13 +122,14 @@ test('catchlights follow attention and change character with emotion', () => {
 
 test('cursor mapping is centred, directional, smooth and bounded outside the canvas', () => {
   const rect = { left: 50, top: 100, width: 1000, height: 600 };
-  const centre = getPointerGaze(550, 400, rect, true);
+  const centerY = rect.top + getLayout(rect.width, rect.height, true).centerY;
+  const centre = getPointerGaze(550, centerY, rect, true);
   assert.ok(Math.abs(centre.x) < 1e-8 && Math.abs(centre.y) < 1e-8);
   assert.ok(getPointerGaze(100, 400, rect, true).x < 0);
   assert.ok(getPointerGaze(1000, 400, rect, true).x > 0);
   assert.ok(getPointerGaze(550, 150, rect, true).y < 0);
   assert.ok(getPointerGaze(550, 650, rect, true).y > 0);
-  const near = getPointerGaze(551, 401, rect, true);
+  const near = getPointerGaze(551, centerY + 1, rect, true);
   assert.ok(near.x > 0 && near.x < 0.15 && near.y > 0 && near.y < 0.15);
   for (const x of [-10000, 0, 500, 10000]) for (const y of [-10000, 0, 500, 10000]) {
     const point = getPointerGaze(x, y, rect, true);
@@ -183,7 +185,7 @@ test('attention poses fit the screen at all gaze extremes and expressions', () =
         const ex = pose[`${side}x`] + Math.cos(angle) * px - Math.sin(angle) * py;
         const ey = pose[`${side}y`] + Math.sin(angle) * px + Math.cos(angle) * py;
         const screenX = layout.centerX + (Math.cos(pose.tilt) * ex - Math.sin(pose.tilt) * ey + pose.gazeX) * layout.scale;
-        const screenY = layout.centerY + (Math.sin(pose.tilt) * ex + Math.cos(pose.tilt) * ey + pose.gazeY) * layout.scale;
+        const screenY = layout.centerY + (Math.sin(pose.tilt) * ex + Math.cos(pose.tilt) * ey + pose.gazeY * layout.gazeScaleY) * layout.scale * layout.stretchY;
         assert.ok(screenX > 0 && screenX < width && screenY > 0 && screenY < height, `${emotion.id} fits ${width}×${height}`);
       }
     }
@@ -191,32 +193,20 @@ test('attention poses fit the screen at all gaze extremes and expressions', () =
 });
 
 test('cursor attention overrides a thinking gaze and is followed by both eyes and surface light', () => {
-  const originalRaf = globalThis.requestAnimationFrame;
-  globalThis.requestAnimationFrame = () => 0;
-  try {
-    const target = getPose('thinking');
-    let rendered;
-    const controller = Object.assign(Object.create(Eyes.prototype), {
-      paused: false, autonomous: false, reducedMotion: { matches: false }, energy: 0,
-      lastFrame: 0, elapsed: 0, lightTime: 0, emotionAt: 0, target, gaze: { until: 0 },
-      lightGaze: { x: new Spring(0, 240, 32), y: new Spring(0, 240, 32) },
-      attentionTarget: { x: 0, y: 0 }, attentionAt: -10,
-      pointer: { active: true, x: -20, y: 12 }, follow: true, bounce: 0, blinkStart: -10,
-      springs: Object.fromEntries(Object.entries(target).map(([key, value]) => [key, new Spring(value)])),
-      draw(pose) { rendered = pose; },
-    });
-    for (let frame = 1; frame <= 180; frame++) controller.frame(frame * 1000 / 60);
-    assert.ok(Math.abs(rendered.gazeX + 20) < 0.01);
-    assert.ok(Math.abs(rendered.gazeY - 12) < 0.01);
-    assert.ok(Math.abs(rendered.lightGazeX + 20) < 0.01);
-    assert.ok(Math.abs(rendered.lightGazeY - 12) < 0.01);
-  } finally {
-    if (originalRaf) globalThis.requestAnimationFrame = originalRaf;
-    else delete globalThis.requestAnimationFrame;
-  }
+  const controller = new EyeSimulation();
+  controller.autonomous = false;
+  controller.energy = 0;
+  controller.setEmotion('thinking');
+  controller.setPointer(-20, 12, true);
+  for (let frame = 1; frame <= 180; frame++) controller.update(1 / 60);
+  const rendered = controller.lastFrame.pose;
+  assert.ok(Math.abs(rendered.gazeX + 20) < 0.01);
+  assert.ok(Math.abs(rendered.gazeY - 12) < 0.01);
+  assert.ok(Math.abs(rendered.lightGazeX + 20) < 0.01);
+  assert.ok(Math.abs(rendered.lightGazeY - 12) < 0.01);
 });
 
-test('resting highlights never roam, rotate or morph, even during a long session', () => {
+test('resting main highlights never roam, rotate or morph, even during a long session', () => {
   const pose = getPose('idle');
   const first = getLight(pose, 0);
   for (const emotion of EMOTIONS) for (let t = 0; t <= 20000; t += 7.7) {
@@ -282,7 +272,7 @@ test('rendered surface light inherits the eye rotation without counter-rotation'
     quadraticCurveTo(a, b, x, y) { points.push(point(x, y)); },
   };
   const pose = getPose('idle');
-  Eyes.prototype.drawLight.call({ scale: 1, dpr: 1 }, context, pose, pose.lw, pose.lh, 0, 'l', 0, 0);
+  drawLight(context, { scale: 1, dpr: 1 }, pose, pose.lw, pose.lh, 0, 'l', 0, 0);
   const renderedAngle = Math.atan2(points[1][1] - points[0][1], points[1][0] - points[0][0]);
   assert.ok(Math.abs(renderedAngle - angle) < 1e-8);
 });
@@ -314,29 +304,65 @@ test('ambient acting contains long holds and purposeful glances', () => {
 });
 
 test('attention highlights settle and reduced motion freezes their breath', () => {
-  const originalRaf = globalThis.requestAnimationFrame;
-  globalThis.requestAnimationFrame = () => 0;
-  try {
-    const target = getPose('idle');
-    const controller = Object.assign(Object.create(Eyes.prototype), {
-      paused: false, autonomous: false, reducedMotion: { matches: false }, energy: 0.65,
-      lastFrame: 0, elapsed: 0, lightTime: 0, emotionAt: 0, target, gaze: { until: 0 },
-      lightGaze: { x: new Spring(0, 240, 32), y: new Spring(0, 240, 32) },
-      attentionTarget: { x: 0, y: 0 }, attentionAt: -10,
-      pointer: { active: false }, follow: false, bounce: 0, blinkStart: -10,
-      springs: Object.fromEntries(Object.entries(target).map(([key, value]) => [key, new Spring(value)])),
-      draw() {},
-    });
-    controller.frame(16.67);
-    assert.ok(controller.lightTime > 0);
-    assert.equal(controller.lightGaze.x.value, 0);
-    assert.equal(controller.lightGaze.y.value, 0);
-    const time = controller.lightTime;
-    controller.reducedMotion.matches = true;
-    controller.frame(33.34);
-    assert.equal(controller.lightTime, time);
-  } finally {
-    if (originalRaf) globalThis.requestAnimationFrame = originalRaf;
-    else delete globalThis.requestAnimationFrame;
+  const controller = new EyeSimulation();
+  controller.autonomous = false;
+  controller.follow = false;
+  controller.update(1 / 60);
+  assert.ok(controller.lightTime > 0);
+  assert.equal(controller.lightGaze.x.value, 0);
+  assert.equal(controller.lightGaze.y.value, 0);
+  const time = controller.lightTime;
+  controller.reducedMotion = true;
+  controller.update(1 / 60);
+  assert.equal(controller.lightTime, time);
+});
+
+test('secondary reflections stay quiet, inside the eye, and fade through wraparound', () => {
+  for (const emotion of EMOTIONS) for (const side of ['l', 'r']) {
+    const pose = getAttentionPose(getPose(emotion.id), 40, -28);
+    let previous;
+    for (let step = 0; step <= 900; step++) {
+      const fragments = getLightFragments(pose, step / 60, side);
+      assert.equal(fragments.length, 2);
+      for (let i = 0; i < fragments.length; ++i) {
+        const light = fragments[i];
+        assert.ok(Object.values(light).every(Number.isFinite));
+        assert.equal(light.angle, 0, 'fragments must not spin inside the eye');
+        assert.ok(light.strength >= 0 && light.strength < 0.10);
+        assert.ok(light.spread * light.height <= 0.031);
+        assert.ok(Math.abs(light.x) + light.spread < 0.94);
+        assert.ok(Math.abs(light.y) + light.height < 0.94);
+        if (previous) {
+          assert.ok(Math.abs(light.strength - previous[i].strength) < 0.001);
+          assert.ok(Math.abs(light.x * light.strength - previous[i].x * previous[i].strength) < 0.001,
+            'a hidden loop reset must not produce a visible jump');
+        }
+      }
+      previous = fragments;
+    }
+  }
+});
+
+test('secondary light flow pauses for reduced motion and disabled natural actions', () => {
+  const simulation = new EyeSimulation();
+  simulation.update(0.05);
+  assert.ok(simulation.flowTime > 0);
+  const before = simulation.flowTime;
+  simulation.reducedMotion = true;
+  simulation.update(0.05);
+  assert.equal(simulation.flowTime, before);
+  simulation.reducedMotion = false;
+  simulation.autonomous = false;
+  simulation.update(0.05);
+  assert.equal(simulation.flowTime, before);
+});
+
+test('16:10 desktop composition stays above the lower half even when looking down', () => {
+  for (const [width, height] of [[1600, 1000], [2240, 1400]]) {
+    const layout = getLayout(width, height, true);
+    const restingHeight = getPose('idle').lh * layout.scale * layout.stretchY;
+    assert.ok(restingHeight > height * 0.43 && restingHeight < height * 0.48);
+    const lowestCenter = layout.centerY + 28 * layout.scale * layout.stretchY * layout.gazeScaleY;
+    assert.ok(lowestCenter < height * 0.5);
   }
 });

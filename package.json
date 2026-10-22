@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check app.js && node --check eyes.js && node --check desktop.js && node --check server.mjs",
+    "check": "node --check app.js && node --check eyes-core.js && node --check eyes.js && node --check server.mjs",
     "desktop:build": "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build -j2",
+    "desktop:test": "npm run desktop:build && \"${QT6_BIN_DIR:-/usr/lib/qt6/bin}/qmltestrunner\" -input tests/qml -o -,txt",
+    "desktop:cursor:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/cursor.test.mjs",
     "desktop": "npm run desktop:build && ./bin/mio show",
     "desktop:install": "bash packaging/install-user.sh"
   }

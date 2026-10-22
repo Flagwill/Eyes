@@ -1,0 +1,19 @@
+{
+  "KPackageStructure": "Plasma/Wallpaper",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "MIO"
+      }
+    ],
+    "Category": "Miscellaneous",
+    "Description": "A translucent agent-presence layer with expressive purple eyes",
+    "Description[zh_CN]": "位于 Plasma 壁纸层、带有紫色表情双眼的半透明 Agent 存在层",
+    "Icon": "preferences-desktop-wallpaper",
+    "Id": "com.mio.Eyes",
+    "License": "MIT",
+    "Name": "MIO Agent Eyes",
+    "Name[zh_CN]": "MIO Agent 双眼"
+  },
+  "X-KDE-ParentApp": "org.kde.plasmashell"
+}

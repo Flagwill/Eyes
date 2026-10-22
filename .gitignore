@@ -1,5 +1,6 @@
 # Local desktop build
 /build/
+*.qsb
 
 # Python bytecode
 __pycache__/
