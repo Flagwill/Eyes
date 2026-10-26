@@ -1,3 +1,4 @@
+import './vendor/sentient-eye-engine/rig.js';
 import './eyes-core.js';
 
 const core = globalThis.EyesCore;
@@ -9,12 +10,17 @@ export const getLayout = core.getLayout;
 export const getPointerGaze = core.getPointerGaze;
 export const getAttentionPose = core.getAttentionPose;
 export const getEyeGeometry = core.getEyeGeometry;
+export const getEyeEdges = core.getEyeEdges;
+export const getSurfacePoint = core.getSurfacePoint;
+export const rig = core.rig;
 export const eyePath = core.eyePath;
 export const getLight = core.getLight;
 export const getLightGeometry = core.getLightGeometry;
 export const getLightFragments = core.getLightFragments;
 export const attentionEnvelope = core.attentionEnvelope;
 export const getAmbientGaze = core.getAmbientGaze;
+export const getFixationMotion = core.getFixationMotion;
+export const getExpressionAccent = core.getExpressionAccent;
 export const blinkAmount = core.blinkAmount;
 export const EyeSimulation = core.EyeSimulation;
 export const drawLight = core.drawLight;
@@ -26,6 +32,13 @@ export class Eyes {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.engine = core.createSimulation();
+    this.destroyed = false;
+    import('./rive-renderer.js').then(({attachRive}) => {
+      if (!this.destroyed) this.rive = attachRive(this.engine, canvas);
+    }).catch(error => {
+      canvas.dataset.renderer = 'fallback';
+      console.error('Eyes Rive module could not load.', error);
+    });
     this.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     this.lastFrame = undefined;
     this.frameId = 0;
@@ -97,11 +110,13 @@ export class Eyes {
     this.frameId = requestAnimationFrame((time) => this.frame(time));
   }
 
-  drawLight(ctx, pose, width, height, bend, side, time, blink) {
-    core.drawLight(ctx, this.engine, pose, width, height, bend, side, time, blink);
+  drawLight(ctx, pose, geometry, side, time, blink) {
+    core.drawLight(ctx, this.engine, pose, geometry, side, time, blink);
   }
 
   destroy() {
+    this.destroyed = true;
+    this.rive?.destroy();
     cancelAnimationFrame(this.frameId);
     this.resizeObserver.disconnect();
     document.removeEventListener('visibilitychange', this.visibilityHandler);

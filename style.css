@@ -358,7 +358,7 @@ kbd {
   letter-spacing:.6px;
 }
 
-canvas {
+#eyes {
   position:absolute;
   inset:0;
   width:100%;
@@ -489,6 +489,17 @@ canvas {
   margin-top:25px;
 }
 
+.gallery-link {
+  display: block;
+  width: fit-content;
+  margin: 12px 0 18px;
+  color: #8e73ad;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.gallery-link:hover { color: #67418c; text-decoration: underline; }
+
 .studio-heading {
   display:flex;
   align-items:center;
@@ -604,98 +615,15 @@ h2 {
 }
 
 .mini-face {
-  height:25px;
-  width:52px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:9px;
-}
-
-.mini-face i {
+  width:64px;
+  height:36px;
   display:block;
-  width:13px;
-  height:20px;
-  background:#b2a0cf;
-  border-radius:3px;
-  transition:background .2s;
+  opacity:.58;
+  transition:opacity .2s;
 }
 
-.emotion-button[aria-pressed=true] .mini-face i {
-  background:#9164d5;
-}
-
-.mini-happy i {
-  height:12px;
-  background:none!important;
-  border-top:6px solid #b2a0cf;
-  border-radius:50%;
-  transform:rotate(-7deg);
-}
-
-.emotion-button[aria-pressed=true] .mini-happy i {
-  border-color:#9164d5;
-}
-
-.mini-happy i:last-child {
-  transform:rotate(7deg);
-}
-
-.mini-curious i:first-child {
-  height:14px;
-  transform:translateY(3px);
-}
-
-.mini-curious i:last-child {
-  height:24px;
-  transform:rotate(8deg);
-}
-
-.mini-thinking {
-  transform:translate(4px,-2px) rotate(-7deg);
-}
-
-.mini-thinking i:first-child {
-  height:12px;
-}
-
-.mini-thinking i:last-child {
-  height:17px;
-}
-
-.mini-focused i {
-  height:11px;
-  transform:skewY(12deg);
-  border-radius:2px;
-}
-
-.mini-focused i:last-child {
-  transform:skewY(-12deg);
-}
-
-.mini-surprised i {
-  height:25px;
-  width:15px;
-  border-radius:4px;
-}
-
-.mini-sleepy i {
-  height:5px;
-  transform:rotate(7deg);
-}
-
-.mini-sleepy i:last-child {
-  transform:rotate(-7deg);
-}
-
-.mini-confused i:first-child {
-  height:8px;
-  transform:rotate(-12deg);
-}
-
-.mini-confused i:last-child {
-  height:19px;
-  transform:rotate(12deg);
+.emotion-button[aria-pressed=true] .mini-face {
+  opacity:1;
 }
 
 .tools-row {

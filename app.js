@@ -1,4 +1,5 @@
-import { Eyes, EMOTIONS, getPointerGaze } from './eyes.js';
+import { Eyes, EyeSimulation, EMOTIONS, getPointerGaze } from './eyes.js';
+import {attachRive} from './rive-renderer.js';
 
 const $ = (selector) => document.querySelector(selector);
 const stage = $('#stage');
@@ -10,7 +11,20 @@ let petReturnEmotion = null;
 let dusk = false;
 let cursorPosition = null;
 
-$('#emotions').innerHTML = EMOTIONS.map((emotion, i) => `<button class="emotion-button" data-emotion="${emotion.id}" aria-pressed="${i === 0}"><span class="emotion-number">0${i + 1}</span><span class="mini-face mini-${emotion.id}" aria-hidden="true"><i></i><i></i></span><span>${emotion.short}</span></button>`).join('');
+$('#emotions').innerHTML = EMOTIONS.map((emotion, i) => `<button class="emotion-button" data-emotion="${emotion.id}" aria-pressed="${i === 0}"><span class="emotion-number">0${i + 1}</span><canvas class="mini-face" width="192" height="108" aria-hidden="true"></canvas><span>${emotion.short}</span></button>`).join('');
+
+document.querySelectorAll('[data-emotion]').forEach((button) => {
+  const thumbnail = new EyeSimulation({ reducedMotion: true });
+  thumbnail.autonomous = false;
+  thumbnail.follow = false;
+  thumbnail.energy = 0;
+  thumbnail.resize(96, 54, 2, true);
+  thumbnail.setEmotion(button.dataset.emotion);
+  for (let i = 0; i < 240; i++) thumbnail.update(1 / 60);
+  thumbnail.draw(button.querySelector('canvas').getContext('2d'));
+  attachRive(thumbnail,button.querySelector('canvas'),()=>thumbnail.draw(
+    button.querySelector('canvas').getContext('2d')));
+});
 
 function selectEmotion(id, { interrupt = true, description } = {}) {
   if (interrupt) stopDemo();

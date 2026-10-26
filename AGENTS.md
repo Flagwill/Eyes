@@ -26,13 +26,22 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 ## 目录地图
 
 - `eyes-core.js`：共享眼睛几何、表情参数、弹簧、高光、眨眼和 Canvas 渲染核心。
+- `assets/eyes/eyes.riv`、`rive-renderer.js`：浏览器与桌面默认播放的同一份 Rive 素材及 WASM 适配。Rive 使用真实状态机和向量渲染；Canvas 样条绘制保留为浏览器降级路径。
+- `tools/build-rive.mjs`：从共享姿态和动作函数生成 RML，并用本地 Rive CLI 编译素材。修改共享核心或生成器后运行 `EYES_RIVE_CLI=/path/to/rive npm run eyes:author`，同步提交 `.riv` 和 manifest；测试核验源码与素材校验值。普通构建不需要 CLI，不登录、不上传。
+- 每种情绪的 Rive 输入包含 `still`、`act`、`entry`、`follow`、`resolve`。它们是静态基姿，动作权重、视线和 `flowphase` 均由共享模型时钟控制，禁止恢复独立运行的眼睑循环。三种互补动作各有弹簧，起势单独衰减，重复状态不重播。`flow` 只控制低亮反光的可见程度。见 ADR-006。
+- `cmake/Rive.cmake`、`desktop/rive-settings.h`、`cmake/rive-path-tail.cpp`：固定开源源码和校验值，编译独立 LGPL Qt Quick RHI 插件，注册枚举并修正单位坐标三角化精度。输入名全部小写，避免上游通知连接错误。更新须核对 [vendor/rive/README.md](vendor/rive/README.md)。
+- `vendor/sentient-eye-engine/rig.js`：MIT 许可的 Sentient Eye Engine 五点样条内核移植；保留固定上游源码和许可证。浏览器先加载它，CMake 将它与核心合并为 QML 包，不要只安装未合并的 `eyes-core.js`。
+- `gallery.html`、`gallery.js`：使用真实引擎的八种表情等尺寸对照。
 - `eyes.js`：浏览器生命周期和画布适配。
 - `tests/packaging.test.mjs`：旧版本入口清理、当前安装及壁纸图片保留、面板隔离回归。
 - `tests/eyes.test.mjs`：动画连续性、表情收敛、布局、高光和注意力行为回归。
 - `app.js`、`index.html`、`style.css`：浏览器调试台和控制面板。
 - 浏览器与桌面渲染共享 `eyes-core.js`；不要复制第二套表情参数或眨眼几何。
+- 表情通过共享眼睑参数及中段控制点驱动五点样条，上下眼睑各用 `compileSmooth` 编译为四段曲率连续的三次系数；端点切线取弯曲与斜率的解析值。原始 `compile` 仅保留上游一致性回归，不能恢复重复端点造成的反向肩部曲率。Rive 使用等价三次顶点和切线，参考 Canvas/GLSL 继续回归。不要恢复独立二次曲线近似，不要用大角度整眼旋转代替情绪。按用户要求默认启用少量眉线、问号、星星、细框眼镜等辅助元素；眉毛须略长于眼宽，保留厚眉头、轻眉峰和渐细眉尾。它们补充眼形，共用表情弹簧与 Rive 素材，禁止单独随机飘动或闪烁。无字体路径与姿态统一定义在核心的 accentDesigns / getAccentStates；辅助层不随眨眼压扁，减少动态效果保留静态提示，显式 accents:false 可关闭。调试台缩略图使用同一素材。
 - `desktop/main.cpp`：无窗口 Qt 后台、Unix socket、WebSocket、D-Bus、托盘和按屏幕映射光标。
 - `packaging/plasma-wallpaper/org.eyes.wallpaper/`：Plasma 壁纸包；`main.qml` 管理磨砂缓存和状态桥，`EyeScene.qml` 适配共享模型，`eye.frag` 绘制 GPU 眼睛。
+- `RiveEyeScene.qml` 为产品默认场景，使用原生 GPU 插件；`EyeScene.qml` / `eye.frag` 为几何参考。两条路径均须运行 GPU 回归。Rive 使用实际输出尺寸的目标，禁止固定低分辨率画面拉伸到桌面。
+- Rive 桌面场景保留 SMAA，并通过 `cmake/RiveAntialiasing.cmake` 在独立离屏目标中启用显卡支持的 8×/4×/2× 多重采样；颜色、模板与绘制管线采样数必须一致，最终合成管线匹配 Qt 实际目标。最终线性取样，预乘透明度只合成一次。路径精度为 4096 单位。GPU 回归覆盖八种表情和亚像素位移，检查实际中间覆盖、狭窄过渡和正确淡出，不能只检查轮廓位置。
 - `tests/qml/tst_eyes.qml`：Qt 6 GPU 实际像素、表情、透明边界和眨眼测试。
 - `bin/eyes`：本地控制客户端；连接 `$XDG_RUNTIME_DIR/eyes.sock` 并按需启动宿主。
 - `packaging/migrate-legacy-install.sh`：停止并移除旧版本的命令、插件与自启动项，不删除壁纸图片或用户数据。
@@ -63,11 +72,11 @@ eyes quit
 ## 桌面实现要点
 
 - 桌面使用 `org.eyes.wallpaper` Plasma 壁纸插件，后台不能再创建 Layer Shell 背景窗口，否则会遮挡桌面图标。
-- 两个 GPU 着色器绘制清晰眼形与内部高光；`FrameAnimation` 驱动模型。禁止恢复整屏逐帧 Canvas 与 CPU 模糊阴影。
-- 小装饰 Canvas 固定为 560×340 模型单位；全屏尺寸由场景缩放决定，不降低眼睛的 GPU 输出分辨率。
+- Rive 原生 Qt Quick RHI 插件绘制清晰眼形与内部高光；`FrameAnimation` 驱动共享弹簧输入。禁止恢复整屏逐帧 Canvas、WebView 或 CPU 模糊阴影。插件必须 `interactive: false` 且 `enabled: false`，输入继续穿透。
+- 产品辅助元素在同一 Rive 素材内以向量绘制；仅参考 GLSL 场景保留 560×340 模型单位的装饰 Canvas。全屏尺寸由共享场景缩放决定，不降低眼睛或辅助元素的 GPU 输出分辨率。
 - 静态磨砂由 `ShaderEffectSource live: false` 缓存；仅图片加载、尺寸变化时刷新。隐藏后保留原始清晰壁纸，不依赖 KWin blur。
 - Qt 6 ShaderTools 在构建时生成 `build/wallpaper-ui/eye.frag.qsb`，必须随壁纸包安装。不要提交生成文件。
-- Plasma 的 QQmlEngine 会缓存旧组件，切换壁纸类型不保证加载新代码。安装器在绘制资源变化时刷新 `plasma-plasmashell.service`；验证须在实际 Plasma 日志看到 `Eyes GPU wallpaper loaded`。
+- Plasma 的 QQmlEngine 会缓存旧组件，切换壁纸类型不保证加载新代码。安装器比较场景、共享模型、`.riv` 和 native plugin，变化时刷新 `plasma-plasmashell.service`；验证须在实际 Plasma 日志看到 `Eyes GPU wallpaper loaded` 和 `Eyes Rive wallpaper loaded`。
 - 可临时设置壁纸配置 `DebugPerformance=true`，日志每 5 秒报告 `EYES_PERF GPU`。不要只凭独立测试窗口的帧率宣布桌面已修复。完成测量后关闭日志。
 - WebSocket 桥仅监听 `127.0.0.1:38271`。断开后必须隐藏画面，避免后台停止后仍残留最后一帧眼睛。
 - KWin 脚本通过 `workspace.cursorPosChanged` 推送全局指针位置。静止时不再发事件，最后一个有效坐标必须持续保留；禁止按事件超时回退到 Wayland 的 `QCursor::pos()`（无焦点时可能返回原点）。仅 X11/xcb 在未取得 KWin 坐标前可用全局 QCursor 回退，未知坐标时 attention.active=false。
@@ -76,7 +85,7 @@ eyes quit
 
 ## 环境与构建
 
-浏览器调试台只需要 Node.js 和 Python 3。
+浏览器调试台需要 Node.js，首次执行 `npm ci` 安装固定的 Rive WASM 包。首轮桌面构建会下载校验固定版本的 Rive / Qt 桥接源码；运行时不访问 CDN。Qt 私有头文件升级后须重建 native plugin。
 
 KDE 桌面版需要 Plasma 6 Wayland、CMake、Ninja，以及 Qt 6 Base/Declarative/WebSockets/ShaderTools。Arch Linux 当前验证组合包括：
 
@@ -104,18 +113,20 @@ eyes status
 
 GPU 改动再运行 `npm run desktop:test`。光标桥修改时先停止桌面后台，再运行 `npm run desktop:cursor:test`；它在独立 D-Bus 和临时运行目录测试真实后台，仍需独占本机桥接端口。使用 `/usr/lib/qt6/bin` 下的 Qt 6 工具（其他发行版可设置 `QT6_BIN_DIR`）；本机 PATH 中同名 `qmllint`、`qmltestrunner` 可能指向 Qt 5。
 
+涉及输出尺寸或像素密度时，运行 `npm run desktop:hidpi:test`。它使用实际 X11 / XWayland 窗口；Qt 6.12 的离屏高 DPI 截图有独立复现的问题，不能据其裁切画面判断 Rive 失败。原生目标尺寸必须包含 `Screen.devicePixelRatio`，并映射回相同逻辑构图。
+
 真实桌面验证应确认：壁纸层位于普通窗口下方；输入完全穿透；全局光标可驱动视线与高光；`complete` 自动淡出；安装后没有重复自启动项。不要用渲染截图替代以下自动回归：
 
 - 所有表情可连续收敛并适配极端屏幕比例。
 - 单 / 双眨眼时序正确。
 - 开心双眼保持等厚弯带。
-- 主面光继承眼形旋转和曲率，静止时不会巡游；次级反光按低亮度节奏流动，不独立旋转或随机抖动。
+- Rive 主面光中心按上下样条之间的真实曲面投影，并使用真实眼形裁切，继承眼形旋转与开合，静止时不巡游；参考渲染器保留完整曲面密度投影。次级反光按低亮度节奏同向流动，不独立旋转或随机抖动。
 - 注意力会改变近侧眼形、眼距、倾斜和高光，并完整留在眼面内。
 
 ## 修改原则
 
 - 视觉调整优先修改连续的 pose、spring 和 light 参数，不在宿主层打补丁。
-- 修改表情或高光语义时，同时更新 `README.md`、`docs/MOTION.md` 和相关测试。
+- 修改表情或高光语义时，同时更新 `README.md`、`docs/MOTION.md`、Rive 素材与相关测试。更新样条移植时同步固定版本、MIT 版权和上游一致性测试。选型与兼容限制见 ADR-005；Rive CLI / 编辑器不是开源运行时，不把它们声明为完全开源工具链。
 - 不提交 `build/`、Python 缓存、运行日志、编辑器配置或机器相关路径。
 - 不引入凭据、个人 token、壁纸内容或其他用户数据。
 - 调试台静态服务必须继续只监听 `127.0.0.1`。
