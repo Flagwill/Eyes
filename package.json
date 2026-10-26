@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
+    "eyes:author": "node tools/build-rive.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check app.js && node --check eyes-core.js && node --check eyes.js && node --check server.mjs",
+    "check": "node --check app.js && node --check eyes-core.js && node --check eyes.js && node --check rive-renderer.js && node --check tools/build-rive.mjs && node --check gallery.js && node --check vendor/sentient-eye-engine/rig.js && node --check server.mjs",
     "desktop:build": "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build -j2",
     "desktop:test": "npm run desktop:build && \"${QT6_BIN_DIR:-/usr/lib/qt6/bin}/qmltestrunner\" -input tests/qml -o -,txt",
+    "desktop:hidpi:test": "npm run desktop:build && QT_SCALE_FACTOR=2 QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl \"${QT6_BIN_DIR:-/usr/lib/qt6/bin}/qmltestrunner\" -input tests/qml/tst_rive.qml -o -,txt",
     "desktop:cursor:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/cursor.test.mjs",
     "desktop": "npm run desktop:build && ./bin/eyes show",
     "desktop:install": "bash packaging/install-user.sh"
+  },
+  "dependencies": {
+    "@rive-app/canvas-advanced": "2.47.0"
   }
 }

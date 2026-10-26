@@ -1,5 +1,6 @@
 # Local desktop build
 /build/
+/node_modules/
 *.qsb
 
 # Python bytecode
