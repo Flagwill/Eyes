@@ -15,8 +15,8 @@ Item {
     function advance(delta) {
         frame = simulation.update(Math.min(delta, 0.064));
         // Only the small decorative marks use a raster texture, never the eyes.
-        if (pose.thinking + pose.happy + pose.curious + pose.surprised +
-                pose.sleepy + pose.confused > 0.001 || accents.hadAccents) {
+        if (simulation.accents && (pose.thinking + pose.happy + pose.curious + pose.focused + pose.surprised +
+                pose.sleepy + pose.confused > 0.001 || accents.hadAccents)) {
             accents.requestPaint();
         }
     }
@@ -43,54 +43,53 @@ Item {
                 delegate: Item {
                     id: eye
                     required property string modelData
-                    readonly property real breathe: scene.frame && scene.frame.alive
-                        ? Math.sin(scene.simulation.elapsed * 1.4) * 0.006 * scene.simulation.energy : 0
+                    readonly property real breathe: scene.frame ? scene.frame.breathe : 0
                     readonly property var geometry: EyeCore.EyesCore.getEyeGeometry(
                         scene.pose, modelData, scene.blink, breathe)
                     readonly property real eyeWidth: geometry.width
                     readonly property real eyeHeight: geometry.height
-                    readonly property real bend: geometry.bend
                     readonly property var light: EyeCore.EyesCore.getLight(
                         scene.pose, scene.simulation.lightTime, modelData)
-                    readonly property var lightShape: EyeCore.EyesCore.getLightGeometry(
-                        light, eyeWidth, eyeHeight, bend)
                     readonly property var fragments: EyeCore.EyesCore.getLightFragments(
                         scene.pose, scene.simulation.flowTime, modelData)
-                    readonly property var fragmentA: EyeCore.EyesCore.getLightGeometry(
-                        fragments[0], eyeWidth, eyeHeight, bend)
-                    readonly property var fragmentB: EyeCore.EyesCore.getLightGeometry(
-                        fragments[1], eyeWidth, eyeHeight, bend)
+                    function vector(c) { return Qt.vector4d(c[0], c[1], c[2], c[3]); }
                     readonly property real padding: 40
                     x: scene.pose[modelData + "x"]
-                    y: scene.pose[modelData + "y"]
+                    y: scene.pose[modelData + "y"] + geometry.offsetY
                     rotation: scene.pose[modelData + "r"] * 180 / Math.PI
 
                     ShaderEffect {
                         objectName: "eyeSurface-" + eye.modelData
                         x: -eye.eyeWidth / 2 - eye.padding
-                        y: -eye.eyeHeight / 2 - eye.bend - eye.padding
+                        y: -eye.geometry.extent - eye.padding
                         width: eye.eyeWidth + eye.padding * 2
-                        height: eye.eyeHeight + eye.bend + eye.padding * 2
+                        height: eye.geometry.extent * 2 + eye.padding * 2
                         property size surfaceSize: Qt.size(width, height)
                         property point surfaceOrigin: Qt.point(x, y)
                         property vector4d eyeGeometry: Qt.vector4d(
-                            eye.eyeWidth, eye.eyeHeight, eye.bend, scene.pose.glow)
+                            eye.eyeWidth, eye.eyeHeight, eye.geometry.extent, scene.pose.glow)
+                        property vector4d upper0: eye.vector(eye.geometry.upper[0])
+                        property vector4d upper1: eye.vector(eye.geometry.upper[1])
+                        property vector4d upper2: eye.vector(eye.geometry.upper[2])
+                        property vector4d upper3: eye.vector(eye.geometry.upper[3])
+                        property vector4d lower0: eye.vector(eye.geometry.lower[0])
+                        property vector4d lower1: eye.vector(eye.geometry.lower[1])
+                        property vector4d lower2: eye.vector(eye.geometry.lower[2])
+                        property vector4d lower3: eye.vector(eye.geometry.lower[3])
                         property vector4d lightGeometry: Qt.vector4d(
-                            eye.lightShape.x, eye.lightShape.y,
-                            eye.lightShape.width, eye.lightShape.height)
+                            eye.light.x, eye.light.y, eye.light.spread, eye.light.height)
                         property vector4d lightDetail: Qt.vector4d(
-                            eye.lightShape.bend, eye.lightShape.slope,
-                            eye.light.strength * (1 - scene.blink * 0.85), 0)
+                            eye.light.kind, 0, eye.light.strength * (1 - scene.blink * 0.85), 0)
                         property vector4d fragmentGeometryA: Qt.vector4d(
-                            eye.fragmentA.x, eye.fragmentA.y, eye.fragmentA.width, eye.fragmentA.height)
+                            eye.fragments[0].x, eye.fragments[0].y,
+                            eye.fragments[0].spread, eye.fragments[0].height)
                         property vector4d fragmentDetailA: Qt.vector4d(
-                            eye.fragmentA.bend, eye.fragmentA.slope,
-                            eye.fragments[0].strength * (1 - scene.blink * 0.85), 0)
+                            1, 0, eye.fragments[0].strength * (1 - scene.blink * 0.85), 0)
                         property vector4d fragmentGeometryB: Qt.vector4d(
-                            eye.fragmentB.x, eye.fragmentB.y, eye.fragmentB.width, eye.fragmentB.height)
+                            eye.fragments[1].x, eye.fragments[1].y,
+                            eye.fragments[1].spread, eye.fragments[1].height)
                         property vector4d fragmentDetailB: Qt.vector4d(
-                            eye.fragmentB.bend, eye.fragmentB.slope,
-                            eye.fragments[1].strength * (1 - scene.blink * 0.85), 0)
+                            1, 0, eye.fragments[1].strength * (1 - scene.blink * 0.85), 0)
                         fragmentShader: "eye.frag.qsb"
                     }
                 }
@@ -103,15 +102,15 @@ Item {
                 width: 560
                 height: 340
                 antialiasing: true
+                visible: Boolean(scene.simulation.accents)
                 property bool hadAccents: false
                 onPaint: {
                     var ctx = getContext("2d");
                     ctx.reset();
                     ctx.clearRect(0, 0, width, height);
                     ctx.translate(280, 180);
-                    EyeCore.EyesCore.drawAccents(ctx, scene.pose,
-                        scene.frame && scene.frame.alive ? scene.simulation.elapsed : 0);
-                    hadAccents = scene.pose.thinking + scene.pose.happy + scene.pose.curious +
+                    EyeCore.EyesCore.drawAccents(ctx, scene.pose);
+                    hadAccents = scene.pose.thinking + scene.pose.happy + scene.pose.curious + scene.pose.focused +
                         scene.pose.surprised + scene.pose.sleepy + scene.pose.confused > 0.001;
                 }
             }

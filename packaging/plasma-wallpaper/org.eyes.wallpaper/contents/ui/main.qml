@@ -86,7 +86,7 @@ WallpaperItem {
         }
     }
 
-    EyeScene {
+    RiveEyeScene {
         id: eyeScene
         anchors.fill: parent
         visible: root.reveal > 0.001
@@ -96,6 +96,8 @@ WallpaperItem {
         onWidthChanged: root.resizeEngine()
         onHeightChanged: root.resizeEngine()
         Component.onCompleted: root.resizeEngine()
+        onLoadedChanged: if (loaded) console.info("Eyes Rive wallpaper loaded", Screen.name,
+            "dpr=" + renderPixelRatio)
     }
 
     Item {

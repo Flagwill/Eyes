@@ -14,14 +14,16 @@ wallpaper_ui="$install_prefix/share/plasma/wallpapers/org.eyes.wallpaper/content
 refresh_plasma=true
 if [[ -f "$wallpaper_ui/main.qml" ]]; then
     refresh_plasma=false
-    for item in main.qml EyeScene.qml; do
+    for item in main.qml EyeScene.qml RiveEyeScene.qml; do
         if ! cmp -s "$project_root/packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui/$item" \
             "$wallpaper_ui/$item"; then
             refresh_plasma=true
         fi
     done
-    if ! cmp -s "$project_root/eyes-core.js" "$wallpaper_ui/eyes-core.js" \
-        || ! cmp -s "$build_dir/wallpaper-ui/eye.frag.qsb" "$wallpaper_ui/eye.frag.qsb"; then
+    if ! cmp -s "$build_dir/wallpaper-ui/eyes-core.js" "$wallpaper_ui/eyes-core.js" \
+        || ! cmp -s "$build_dir/wallpaper-ui/eye.frag.qsb" "$wallpaper_ui/eye.frag.qsb" \
+        || ! cmp -s "$build_dir/wallpaper-ui/eyes.riv" "$wallpaper_ui/eyes.riv" \
+        || ! cmp -s "$build_dir/wallpaper-ui/EyesRive/libEyesRive.so" "$wallpaper_ui/EyesRive/libEyesRive.so"; then
         refresh_plasma=true
     fi
 fi

@@ -20,11 +20,21 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     ShaderTools
 )
 
+include(cmake/Rive.cmake)
+
 set(EYES_WALLPAPER_UI packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui)
 set(EYES_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eye.frag.qsb)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui)
 configure_file(${EYES_WALLPAPER_UI}/EyeScene.qml wallpaper-ui/EyeScene.qml COPYONLY)
-configure_file(eyes-core.js wallpaper-ui/eyes-core.js COPYONLY)
+configure_file(${EYES_WALLPAPER_UI}/RiveEyeScene.qml wallpaper-ui/RiveEyeScene.qml COPYONLY)
+configure_file(assets/eyes/eyes.riv wallpaper-ui/eyes.riv COPYONLY)
+# QML imports a single classic script; browsers load the same two sources in order.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    eyes-core.js vendor/sentient-eye-engine/rig.js)
+file(READ vendor/sentient-eye-engine/rig.js EYES_RIG_SOURCE)
+file(READ eyes-core.js EYES_CORE_SOURCE)
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eyes-core.js
+    "${EYES_RIG_SOURCE}\n${EYES_CORE_SOURCE}")
 add_custom_command(
     OUTPUT ${EYES_SHADER_OUTPUT}
     COMMAND Qt6::qsb --glsl "100 es,120,150" --hlsl 50 --msl 12
@@ -85,9 +95,13 @@ install(DIRECTORY
     PATTERN "main.xml"
     PATTERN "main.qml"
     PATTERN "EyeScene.qml"
+    PATTERN "RiveEyeScene.qml"
 )
 install(FILES
-    eyes-core.js
+    ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eyes-core.js
     ${EYES_SHADER_OUTPUT}
+    ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eyes.riv
     DESTINATION share/plasma/wallpapers/org.eyes.wallpaper/contents/ui
 )
+install(FILES vendor/sentient-eye-engine/LICENSE
+    DESTINATION share/doc/eyes/licenses RENAME Sentient-Eye-Engine-MIT.txt)
