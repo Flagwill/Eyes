@@ -7,7 +7,7 @@
   <group name="General">
     <entry name="AnimationFps" type="Int">
       <label>Maximum eye animation updates per second (20–60)</label>
-      <default>30</default>
+      <default>60</default>
     </entry>
     <entry name="DebugPerformance" type="Bool">
       <default>false</default>

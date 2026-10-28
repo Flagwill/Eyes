@@ -200,7 +200,7 @@ WallpaperItem {
     AnimationClock {
         id: animationTimer
         running: root.reveal > 0.001
-        framesPerSecond: Number(root.configuration.AnimationFps) || 30
+        framesPerSecond: Number(root.configuration.AnimationFps) || 60
         onAdvance: function(delta) {
             if (eyeScene.item) eyeScene.item.advance(delta);
             if (root.configuration.DebugPerformance) root.recordFrame(delta);

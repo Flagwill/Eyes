@@ -39,15 +39,17 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - 浏览器与桌面渲染共享 `eyes-core.js`；不要复制第二套表情参数或眨眼几何。
 - 表情通过共享眼睑参数及中段控制点驱动五点样条，上下眼睑各用 `compileSmooth` 编译为四段曲率连续的三次系数；端点切线取弯曲与斜率的解析值。原始 `compile` 仅保留上游一致性回归，不能恢复重复端点造成的反向肩部曲率。Rive 使用等价三次顶点和切线，参考 Canvas/GLSL 继续回归。不要恢复独立二次曲线近似，不要用大角度整眼旋转代替情绪。按用户要求默认启用少量眉线、问号、星星、细框眼镜等辅助元素；眉毛须略长于眼宽，保留厚眉头、轻眉峰和渐细眉尾。它们补充眼形，共用表情弹簧与 Rive 素材，禁止单独随机飘动或闪烁。无字体路径与姿态统一定义在核心的 accentDesigns / getAccentStates；辅助层不随眨眼压扁，减少动态效果保留静态提示，显式 accents:false 可关闭。调试台缩略图使用同一素材。
 - `desktop/main.cpp`：无窗口 Qt 后台、Unix socket、WebSocket、D-Bus、托盘和按屏幕映射光标。
+- `integrations/codex/hooks.json`、`integrations/codex/eyes-codex-hook.py`：用户级 Codex 生命周期适配器源；安装到 `~/.codex`，只调用现有 Eyes 命令，错误必须静默并以 0 退出。不要在仓库内保留第二份 `.codex` hook 入口，否则已信任的项目级配置会与用户级配置重复驱动状态。
 - `packaging/plasma-wallpaper/org.eyes.wallpaper/`：Plasma 壁纸包；`main.qml` 管理磨砂缓存和状态桥，`EyeScene.qml` 适配共享模型，`eye.frag` 绘制 GPU 眼睛。
 - `RiveEyeScene.qml` 为产品默认场景，使用原生 GPU 插件；`EyeScene.qml` / `eye.frag` 为几何参考。两条路径均须运行 GPU 回归。Rive 使用实际输出尺寸的目标，禁止固定低分辨率画面拉伸到桌面。
 - Rive 桌面场景保留 SMAA，并通过 `cmake/RiveAntialiasing.cmake` 在独立离屏目标中启用显卡支持的 8×/4×/2× 多重采样；颜色、模板与绘制管线采样数必须一致，最终合成管线匹配 Qt 实际目标。最终线性取样，预乘透明度只合成一次。路径精度为 4096 单位。GPU 回归覆盖八种表情和亚像素位移，检查实际中间覆盖、狭窄过渡和正确淡出，不能只检查轮廓位置。
 - `tests/qml/tst_eyes.qml`：Qt 6 GPU 实际像素、表情、透明边界和眨眼测试。
 - `bin/eyes`：本地控制客户端；连接 `$XDG_RUNTIME_DIR/eyes.sock` 并按需启动宿主。
 - `packaging/migrate-legacy-install.sh`：停止并移除旧版本的命令、插件与自启动项，不删除壁纸图片或用户数据。
-- `packaging/install-user.sh`：用户级安装、自启动、KWin 脚本注册和宿主启动。
+- `packaging/install-user.sh`：用户级安装、自启动、Codex hooks、KWin 脚本注册和宿主启动。`packaging/install-codex-hooks.py` 合并用户 hooks，不得覆盖其他工具条目。
 - `packaging/kwin-eyes-cursor/`：将 KWin 全局光标发送到 `org.eyes.Desktop /Cursor`。
 - `docs/MOTION.md`：眼神表演、高光和注意力动作台本。
+- `docs/CODEX.md`：Codex Desktop hooks 映射、信任步骤和限制。
 - `docs/gallery/`：开发过程中的视觉快照，不是运行时依赖。
 
 ## 运行接口
@@ -78,7 +80,7 @@ eyes quit
 - Qt 6 ShaderTools 在构建时生成 `build/wallpaper-ui/eye.frag.qsb`，必须随壁纸包安装。不要提交生成文件。
 - Plasma 的 QQmlEngine 会缓存旧组件，切换壁纸类型不保证加载新代码。安装器比较场景、共享模型、`.riv` 和 native plugin，变化时刷新 `plasma-plasmashell.service`；验证须在实际 Plasma 日志看到 `Eyes GPU wallpaper loaded` 和 `Eyes Rive wallpaper loaded`。
 - 可临时设置壁纸配置 `DebugPerformance=true`，日志每 5 秒报告 `EYES_PERF GPU`。不要只凭独立测试窗口的帧率宣布桌面已修复。完成测量后关闭日志。
-- 常驻默认 `AnimationFps=30`（20–60）。`AnimationClock.qml` 仍用 FrameAnimation 累计真实帧间隔，隐藏后停钟且不追补隐藏时间。`cmake/RiveScheduling.cmake` 让 Rive 仅随模型更新，在当前帧 prepare 阶段绘制并缓存向量和 SMAA；不要恢复原生自刷新或每帧反向输入轮询。淡出后 Loader 卸载眼睛场景以释放渲染目标；宿主继续待命。见 ADR-008。
+- 常驻默认 `AnimationFps=60`（20–60）。`AnimationClock.qml` 仍用 FrameAnimation 累计真实帧间隔，隐藏后停钟且不追补隐藏时间。`cmake/RiveScheduling.cmake` 让 Rive 仅随模型更新，在当前帧 prepare 阶段绘制并缓存向量和 SMAA；不要恢复原生自刷新或每帧反向输入轮询。淡出后 Loader 卸载眼睛场景以释放渲染目标；宿主继续待命。见 ADR-008。
 - WebSocket 桥仅监听 `127.0.0.1:38271`。断开后必须隐藏画面，避免后台停止后仍残留最后一帧眼睛。
 - KWin 脚本通过 `workspace.cursorPosChanged` 推送全局指针位置。静止时不再发事件，最后一个有效坐标必须持续保留；禁止按事件超时回退到 Wayland 的 `QCursor::pos()`（无焦点时可能返回原点）。仅 X11/xcb 在未取得 KWin 坐标前可用全局 QCursor 回退，未知坐标时 attention.active=false。
 - 桌面壁纸只做纯模糊（blur=1、blurMax=64、blurMultiplier=1），不叠加白色蒙版、渐变、边框，不调整饱和度、亮度或对比度。

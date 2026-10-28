@@ -31,7 +31,7 @@ Item {
             compare(clock.updates, 0);
         }
         function test_rate_limit_preserves_elapsed_time_data() {
-            return [{tag: "minimum", fps:20}, {tag: "resident", fps:30}, {tag: "smooth", fps:60}];
+            return [{tag: "minimum", fps:20}, {tag: "balanced", fps:30}, {tag: "default", fps:60}];
         }
         function test_rate_limit_preserves_elapsed_time(data) {
             clock.framesPerSecond = data.fps;

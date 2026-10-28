@@ -54,9 +54,9 @@ eyes quit
 
 `start`、`thinking`、`working`、`waiting` 会显示对应神态，`complete` 显示开心表情并在 4.5 秒后淡出。`blink`、`look X Y` 和 `emotion ID` 可用于调试。首次执行显示命令时，客户端会自动启动后台宿主。
 
-安装后默认登录常驻、隐藏待命。隐藏时停止动画和光标轮询，不广播光标移动；淡出结束后卸载眼睛的原生渲染实例，释放对应 GPU 目标，下次收到任务时重新加载。最后的全局光标位置仍会保留，显示后继续跟随。显示时默认每秒更新 30 次，共享弹簧按真实经过的时间推进；原生向量绘制只在模型更新时执行，Plasma 的其他动画复用已绘制的眼睛纹理。屏幕输出尺寸、8×/4×/2× 多重采样和 SMAA 保持原有质量。
+安装后默认登录常驻、隐藏待命。隐藏时停止动画和光标轮询，不广播光标移动；淡出结束后卸载眼睛的原生渲染实例，释放对应 GPU 目标，下次收到任务时重新加载。最后的全局光标位置仍会保留，显示后继续跟随。显示时默认每秒更新 60 次，共享弹簧按真实经过的时间推进；原生向量绘制只在模型更新时执行，Plasma 的其他动画复用已绘制的眼睛纹理。屏幕输出尺寸、8×/4×/2× 多重采样和 SMAA 保持原有质量。
 
-需要更高动画帧率时，可将 Eyes 壁纸的 `AnimationFps` 配置改为 `60`，支持范围为 20–60。常驻策略、测量方式与取舍见 [ADR-008](docs/decisions/008-demand-driven-resident-rendering.md)。
+需要降低负载时，可将 Eyes 壁纸的 `AnimationFps` 配置改为 `30` 或更低，支持范围为 20–60。常驻策略、测量方式与取舍见 [ADR-008](docs/decisions/008-demand-driven-resident-rendering.md)。
 
 八种神态：待命、开心、好奇、思考、专注、惊讶、困困、困惑。支持自动眨眼、双眨眼（Shift + 空格）、八方向视线、鼠标跟随、点击双眼互动、活泼程度调节、浅色 / 暮色壁纸、磨砂浓度和沉浸预览。工作周期演示约 26 秒，可随时停止或切换表情。
 
@@ -102,6 +102,12 @@ eyes complete
 
 `start` 自动启动后台宿主并显示好奇；`thinking`、`working`、`waiting` 分别表达规划、工具执行和等待输入；`complete` 开心约 4.5 秒后淡出；`idle` 和 `hide` 只隐藏画面，宿主继续等待下一条命令。桌面宿主通过 `$XDG_RUNTIME_DIR/eyes.sock` 接收命令。每块显示器的原生壁纸插件共享相同的工作状态；光标位置由轻量 KWin 脚本经 `org.eyes.Desktop` D-Bus 服务送入动画，驱动双眼眼形、眼距、高光的位置和注意力节奏。
 
+### Codex Desktop
+
+用户级 Codex hooks 安装在 `~/.codex/hooks.json` 与 `~/.codex/hooks/eyes-codex-hook.py`，所有项目共享。安装器把 Eyes 条目合并到现有配置，不覆盖其他工具的 hooks。适配器记录并行工具调用，忽略自身失败且不输出上下文，不会影响 Codex 的工具决策。安装或更新后，若 Codex 将 hooks 标为 `untrusted` 或 `modified`，在 `/hooks` 中审查并信任，再新建线程使配置生效。
+
+仓库中的 `integrations/codex/` 是可重复安装的源；`npm run codex:hooks:install` 可单独更新用户级 hooks。不要把同一套 hooks 再放进项目 `.codex/hooks.json`，否则会重复启动事件。事件映射、动效防抖和限制见 [docs/CODEX.md](docs/CODEX.md)。
+
 壁纸插件保留原图片，使用更强的纯模糊并缓存结果，不依赖 KWin blur；不叠加白色或染色蒙版，也不调整壁纸的饱和度、亮度或对比度。Rive 通过 Qt Quick RHI 在 GPU 绘制向量，输出纹理尺寸随屏幕构图放大，不把固定低分辨率画面拉伸到桌面。`FrameAnimation` 驱动共享弹簧输入。状态桥只监听 `127.0.0.1:38271`。后台退出或连接断开时，插件自动隐藏双眼、恢复清晰壁纸。托盘菜单可显示、隐藏、演示或退出。
 
 ## 仓库结构
@@ -123,7 +129,10 @@ bin/eyes                        本地控制客户端
 packaging/                      用户安装、自启动与 KWin 光标桥
 tests/eyes.test.mjs             动画与构图回归测试
 tests/packaging.test.mjs        升级清理与壁纸保留回归
+tests/codex-hooks.test.mjs      Codex 生命周期映射、用户安装与静默失败回归
+integrations/codex/             用户级 Codex Desktop 生命周期接入源
 docs/MOTION.md                  眼神表演、高光和注意力动作约定
+docs/CODEX.md                   Codex hooks 映射、信任与限制
 docs/gallery/                   开发过程视觉快照
 AGENTS.md                       仓库记忆与后续维护约束
 ```

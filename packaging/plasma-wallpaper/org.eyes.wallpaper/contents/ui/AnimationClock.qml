@@ -2,7 +2,7 @@ import QtQuick
 
 FrameAnimation {
     id: clock
-    property real framesPerSecond: 30
+    property real framesPerSecond: 60
     property real budget: 0
     property real pendingDelta: 0
     signal advance(real delta)

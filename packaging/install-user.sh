@@ -46,6 +46,10 @@ fi
 
 cmake --install "$build_dir" --prefix "$install_prefix"
 
+# User-level hooks stay available outside this checkout and apply to every
+# Codex project. The installer preserves unrelated hook definitions.
+python3 "$project_root/packaging/install-codex-hooks.py"
+
 # Preserve each desktop's current image and move only the desktop
 # containment to the Eyes wallpaper plugin. Plasma panels are ignored.
 desktop_config="${XDG_CONFIG_HOME:-$HOME/.config}/plasma-org.kde.plasma.desktop-appletsrc"

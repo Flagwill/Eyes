@@ -25,7 +25,7 @@ latest position directly without timers or attention messages. Coalesce
 visible movements as before and discard duplicate positions. Visibility
 changes still send attention, so waking immediately restores the last target.
 
-Use a FrameAnimation-based clock with a default maximum of 30 model updates
+Use a FrameAnimation-based clock with a default maximum of 60 model updates
 per second, configurable from 20 to 60 through `AnimationFps`. Keep a normal
 update within the shared integrator's 64 ms limit. Accumulate real
 frame time and fractional periods rather than advancing by a fixed timestep;
@@ -84,11 +84,16 @@ cursor/completion integration test passed, as did script syntax checks and
 the desktop build. The installed completion state remained visible at two
 seconds and hid by 5.6 seconds despite an intervening status read.
 
-The installed wallpaper reported 30.0–30.3 model fps at DPR=2. Host RSS was
-77.1 MiB after installation, including shared Qt libraries; idle CPU savings
-do not imply eliminating that baseline memory. Plasma RSS changed across a
-shell restart and is not attributed to the optimization. These are short
-local observations rather than a hardware-independent resource guarantee.
+The initial installed wallpaper reported 30.0–30.3 model fps at DPR=2. After
+raising the default to 60 fps, fifteen consecutive five-second `EYES_PERF`
+samples on 2026-10-28 reported 57.6–60.2 model fps; the first twelve were
+59.7–60.2 fps. The sample display was `eDP-1` at DPR=2. Temporary performance
+logging was then disabled, both desktops retained `AnimationFps=60`, and the
+host returned to hidden idle. Host RSS was 77.1 MiB after the earlier
+installation, including shared Qt libraries; idle CPU savings do not imply
+eliminating that baseline memory. Plasma RSS changed across a shell restart
+and is not attributed to the optimization. These are short local observations
+rather than a hardware-independent resource guarantee.
 
 The separate XCB high-DPI test timed out after 50 seconds before producing
 test output, consistent with the prior session limitation recorded in
@@ -97,8 +102,8 @@ Plasma logs but does not replace the high-DPI pixel regression. Temporary
 performance logging was disabled and hidden idle restored after sampling.
 
 ## Consequences
-Resident mode trades the previous screen-rate animation for a default 30 fps;
-users can select 60 fps. First show reloads native resources and can take
+Resident mode trades the previous screen-rate animation for a default 60 fps;
+users can select 30 fps or another value in the 20–60 range. First show reloads native resources and can take
 longer than reusing an always-loaded scene. Shared pose and light semantics
 are unchanged, so the existing Rive asset remains valid. Hidden mode still
 receives KWin movement events to preserve global coordinates, but does no
