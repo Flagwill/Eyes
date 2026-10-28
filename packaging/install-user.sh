@@ -14,7 +14,7 @@ wallpaper_ui="$install_prefix/share/plasma/wallpapers/org.eyes.wallpaper/content
 refresh_plasma=true
 if [[ -f "$wallpaper_ui/main.qml" ]]; then
     refresh_plasma=false
-    for item in main.qml EyeScene.qml RiveEyeScene.qml; do
+    for item in main.qml EyeScene.qml RiveEyeScene.qml AnimationClock.qml; do
         if ! cmp -s "$project_root/packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui/$item" \
             "$wallpaper_ui/$item"; then
             refresh_plasma=true

@@ -78,6 +78,7 @@ eyes quit
 - Qt 6 ShaderTools 在构建时生成 `build/wallpaper-ui/eye.frag.qsb`，必须随壁纸包安装。不要提交生成文件。
 - Plasma 的 QQmlEngine 会缓存旧组件，切换壁纸类型不保证加载新代码。安装器比较场景、共享模型、`.riv` 和 native plugin，变化时刷新 `plasma-plasmashell.service`；验证须在实际 Plasma 日志看到 `Eyes GPU wallpaper loaded` 和 `Eyes Rive wallpaper loaded`。
 - 可临时设置壁纸配置 `DebugPerformance=true`，日志每 5 秒报告 `EYES_PERF GPU`。不要只凭独立测试窗口的帧率宣布桌面已修复。完成测量后关闭日志。
+- 常驻默认 `AnimationFps=30`（20–60）。`AnimationClock.qml` 仍用 FrameAnimation 累计真实帧间隔，隐藏后停钟且不追补隐藏时间。`cmake/RiveScheduling.cmake` 让 Rive 仅随模型更新，在当前帧 prepare 阶段绘制并缓存向量和 SMAA；不要恢复原生自刷新或每帧反向输入轮询。淡出后 Loader 卸载眼睛场景以释放渲染目标；宿主继续待命。见 ADR-008。
 - WebSocket 桥仅监听 `127.0.0.1:38271`。断开后必须隐藏画面，避免后台停止后仍残留最后一帧眼睛。
 - KWin 脚本通过 `workspace.cursorPosChanged` 推送全局指针位置。静止时不再发事件，最后一个有效坐标必须持续保留；禁止按事件超时回退到 Wayland 的 `QCursor::pos()`（无焦点时可能返回原点）。仅 X11/xcb 在未取得 KWin 坐标前可用全局 QCursor 回退，未知坐标时 attention.active=false。
 - 桌面壁纸只做纯模糊（blur=1、blurMax=64、blurMultiplier=1），不叠加白色蒙版、渐变、边框，不调整饱和度、亮度或对比度。

@@ -5,6 +5,10 @@
       http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
   <kcfgfile name=""/>
   <group name="General">
+    <entry name="AnimationFps" type="Int">
+      <label>Maximum eye animation updates per second (20–60)</label>
+      <default>30</default>
+    </entry>
     <entry name="DebugPerformance" type="Bool">
       <default>false</default>
     </entry>

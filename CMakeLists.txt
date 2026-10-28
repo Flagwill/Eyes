@@ -27,6 +27,7 @@ set(EYES_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eye.frag.qsb)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui)
 configure_file(${EYES_WALLPAPER_UI}/EyeScene.qml wallpaper-ui/EyeScene.qml COPYONLY)
 configure_file(${EYES_WALLPAPER_UI}/RiveEyeScene.qml wallpaper-ui/RiveEyeScene.qml COPYONLY)
+configure_file(${EYES_WALLPAPER_UI}/AnimationClock.qml wallpaper-ui/AnimationClock.qml COPYONLY)
 configure_file(assets/eyes/eyes.riv wallpaper-ui/eyes.riv COPYONLY)
 # QML imports a single classic script; browsers load the same two sources in order.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -96,6 +97,7 @@ install(DIRECTORY
     PATTERN "main.qml"
     PATTERN "EyeScene.qml"
     PATTERN "RiveEyeScene.qml"
+    PATTERN "AnimationClock.qml"
 )
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eyes-core.js

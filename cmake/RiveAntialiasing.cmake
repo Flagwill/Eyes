@@ -41,7 +41,7 @@ endforeach()
 eyes_replace_rive_rhi("postprocessedBuffer, m_sampler)"
     "postprocessedBuffer, m_blendSampler)")
 
-file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/riveqsgrhirendernode.cpp
-    CONTENT "${rive_rhi_source}" @ONLY)
+# RiveScheduling applies the remaining adaptation and writes the source once,
+# avoiding needless recompilation on every configure/install.
 list(REMOVE_ITEM rive_qt_sources ${rive_qt_src}/riveqsgrhirendernode.cpp)
 list(APPEND rive_qt_sources ${CMAKE_CURRENT_BINARY_DIR}/riveqsgrhirendernode.cpp)

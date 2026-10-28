@@ -86,18 +86,22 @@ WallpaperItem {
         }
     }
 
-    RiveEyeScene {
+    Loader {
         id: eyeScene
         anchors.fill: parent
-        visible: root.reveal > 0.001
+        active: root.reveal > 0.001
         opacity: root.reveal
-        simulation: root.simulation
-
+        sourceComponent: RiveEyeScene {
+            simulation: root.simulation
+            Component.onCompleted: {
+                root.resizeEngine();
+                advance(0);
+            }
+            onLoadedChanged: if (loaded) console.info("Eyes Rive wallpaper loaded", Screen.name,
+                "dpr=" + renderPixelRatio)
+        }
         onWidthChanged: root.resizeEngine()
         onHeightChanged: root.resizeEngine()
-        Component.onCompleted: root.resizeEngine()
-        onLoadedChanged: if (loaded) console.info("Eyes Rive wallpaper loaded", Screen.name,
-            "dpr=" + renderPixelRatio)
     }
 
     Item {
@@ -193,12 +197,21 @@ WallpaperItem {
         }
     }
 
-    FrameAnimation {
+    AnimationClock {
         id: animationTimer
         running: root.reveal > 0.001
-        onTriggered: {
-            eyeScene.advance(frameTime > 0 ? frameTime : 1 / 60);
-            if (root.configuration.DebugPerformance) root.recordFrame(frameTime);
+        framesPerSecond: Number(root.configuration.AnimationFps) || 30
+        onAdvance: function(delta) {
+            if (eyeScene.item) eyeScene.item.advance(delta);
+            if (root.configuration.DebugPerformance) root.recordFrame(delta);
+        }
+    }
+
+    Connections {
+        target: animationTimer
+        function onRunningChanged() {
+            root.frameSamples = [];
+            root.performanceSince = 0;
         }
     }
 

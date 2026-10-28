@@ -18,9 +18,31 @@ Item {
         renderer.x: -renderer.width / 2 + testScene.edgeOffset / renderPixelRatio
         renderer.y: -renderer.height / 2 + testScene.edgeOffset * .43 / renderPixelRatio
     }
+    Component {
+        id: freshScene
+        Eyes.RiveEyeScene {
+            width: testScene.width
+            height: testScene.height
+        }
+    }
     TestCase {
         name: "RiveGpuEyes"
         when: windowShown
+        SignalSpy {
+            id: nativeUpdates
+            target: eyes.renderer
+            signalName: "frameRateChanged"
+        }
+        Rectangle {
+            id: unrelatedItem
+            width: 5; height: 5
+            visible: false
+            NumberAnimation on opacity {
+                id: unrelatedAnimation
+                from: .1; to: 1; duration: 180; loops: Animation.Infinite
+                running: false
+            }
+        }
         function init() {
             testScene.edgeOffset = 0;
             eyes.opacity = 1;
@@ -111,6 +133,51 @@ Item {
             compare(eyes.renderer.width,560*eyes.layout.scale*eyes.renderPixelRatio);
             compare(eyes.renderer.height,340*eyes.layout.scale*eyes.layout.stretchY*eyes.renderPixelRatio);
             verify(eyes.renderer.width>560,"The GPU target must grow with the scene");
+        }
+        function test_held_pose_does_not_schedule_native_updates() {
+            settle("happy");
+            nativeUpdates.clear();
+            wait(180);
+            compare(nativeUpdates.count, 0,
+                "A held model must stop the native self-scheduling loop");
+            unrelatedItem.visible = true;
+            unrelatedAnimation.start();
+            wait(220);
+            unrelatedAnimation.stop();
+            unrelatedItem.visible = false;
+            compare(nativeUpdates.count, 0,
+                "Other Plasma animations must reuse the held vector texture");
+            verify(sample(grabImage(eyes), point("l",0,0)).g < 150,
+                "The last model update must reach the cached GPU texture");
+        }
+        function test_resume_from_hidden_updates_the_cached_texture() {
+            settle("idle");
+            eyes.visible = false;
+            eyes.simulation.setEmotion("happy");
+            for (let i = 0; i < 240; i++) eyes.advance(1 / 60);
+            wait(60);
+            eyes.visible = true;
+            eyes.advance(0);
+            wait(120);
+            verify(sample(grabImage(eyes), point("l",0,0)).g < 150);
+        }
+        function test_lazy_load_initializes_a_held_expression() {
+            const simulation = Core.EyesCore.createSimulation({reducedMotion:true});
+            simulation.setEmotion("happy");
+            for (let i = 0; i < 240; i++) simulation.update(1 / 60);
+            const fresh = createTemporaryObject(freshScene, testScene, {simulation:simulation});
+            verify(fresh !== null);
+            fresh.advance(0);
+            tryCompare(fresh, "loaded", true, 10000);
+            wait(120);
+            const star = fresh.renderer.mapToItem(fresh,
+                (280 + 211) / 560 * fresh.renderer.width,
+                (170 - 65) / 340 * fresh.renderer.height);
+            const image = grabImage(fresh);
+            const x = Math.round(star.x * image.width / fresh.width);
+            const y = Math.round(star.y * image.height / fresh.height);
+            verify(image.green(x,y) < 237 && image.blue(x,y) > image.green(x,y) + 12,
+                "A lazily loaded renderer must show held inputs without another model tick");
         }
         function test_curved_edges_have_pixel_coverage_data() {
             const rows = [];

@@ -15,6 +15,8 @@ Item {
     readonly property alias renderer: riveItem
     readonly property bool loaded: riveItem.loadingStatus === Rive.RiveQtQuickItem.Loaded
 
+    onFrameChanged: riveItem.update()
+
     function advance(delta) {
         frame = simulation.update(Math.min(delta, 0.064));
     }

@@ -40,6 +40,17 @@ linear and uses premultiplied source-over blending to avoid moving stair steps
 and dark fringes. Path normalization uses 4096 units to retain curve detail
 when enlarged. No downloaded source is modified.
 
+`cmake/RiveScheduling.cmake` adapts the pinned bridge for resident operation.
+The build mirrors upstream files into an ignored adapter directory so all
+translation units use the same adapted headers. The shared model explicitly
+requests item updates; the bridge does not run its own animation loop or poll
+inputs back into QML. Input values are initialized when a state machine is
+attached. RHI `prepare()` submits vector passes on Qt's current command buffer
+after preparing the current artboard, followed by SMAA and final composition.
+Held frames reuse the vector texture while composition still updates opacity
+and transforms. This removes the upstream extra offscreen frame and prevents
+the last pose from remaining stale when model updates stop. See ADR-008.
+
 The GPU regression covers all eight expressions at three fractional pixel
 positions, requires most sampled columns to have intermediate coverage, and
 limits the transition to two physical pixels. A fade regression checks that

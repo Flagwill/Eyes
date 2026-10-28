@@ -24,12 +24,14 @@ test('stationary KWin attention survives fallback ticks and reconnects', async (
   });
 
   const samples = [];
+  const messages = [];
   async function connect() {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket('ws://127.0.0.1:38271/');
       ws.addEventListener('error', reject, { once: true });
       ws.addEventListener('message', event => {
         const message = JSON.parse(event.data);
+        messages.push(message);
         if (message.attention) samples.push(message.attention);
         if (message.type === 'snapshot') resolve(ws);
       });
@@ -58,4 +60,32 @@ test('stationary KWin attention survives fallback ticks and reconnects', async (
     assert.deepEqual(attention, { x: 320, y: 240, active: true },
       'stationary attention must never fall back to (0, 0)');
   }
+
+  // Hidden movement must retain the latest target without waking the model or
+  // broadcasting. Duplicate positions must also be silent once visible.
+  execFileSync(client, ['hide'], { env });
+  await delay(100);
+  const hiddenCount = samples.length;
+  for (const [x, y] of [[111, 99], [222, 199], [420, 260]]) {
+    execFileSync(qdbus, ['org.eyes.Desktop', '/Cursor', 'org.eyes.Desktop.SetPosition', String(x), String(y)], { env });
+  }
+  await delay(200);
+  assert.equal(samples.length, hiddenCount, 'hidden movement must not broadcast attention');
+  execFileSync(client, ['show'], { env });
+  await delay(100);
+  assert.deepEqual(samples.at(-1), { x: 420, y: 260, active: true });
+  const shownCount = samples.length;
+  for (let i = 0; i < 4; i++) {
+    execFileSync(qdbus, ['org.eyes.Desktop', '/Cursor', 'org.eyes.Desktop.SetPosition', '420', '260'], { env });
+  }
+  await delay(150);
+  assert.equal(samples.length, shownCount, 'duplicate coordinates must not broadcast');
+
+  execFileSync(client, ['complete'], { env });
+  await delay(2000);
+  assert.equal(JSON.parse(execFileSync(client, ['status'], { env })).visible, true);
+  await delay(2800);
+  assert.equal(JSON.parse(execFileSync(client, ['status'], { env })).visible, false,
+    'read-only status must not cancel the completion timer');
+  assert.equal(messages.at(-2).type, 'visible');
 });

@@ -13,7 +13,16 @@ FetchContent_Declare(eyes_rive_runtime
 # Use our Qt 6 build adapter instead of upstream's top-level CMake. It assumes
 # it is the root project and unnecessarily builds text dependencies for Eyes.
 FetchContent_MakeAvailable(eyes_rive_qt eyes_rive_runtime)
-set(rive_qt_src ${eyes_rive_qt_SOURCE_DIR}/src/RiveQtQuickItem)
+# Keep every translation unit on the same adapted headers, while preserving
+# the downloaded LGPL source verbatim for inspection and replacement.
+set(rive_qt_upstream ${eyes_rive_qt_SOURCE_DIR}/src/RiveQtQuickItem)
+set(rive_qt_src ${CMAKE_CURRENT_BINARY_DIR}/rive-qt)
+file(GLOB_RECURSE rive_bridge_files RELATIVE ${rive_qt_upstream} ${rive_qt_upstream}/*)
+foreach(bridge_file IN LISTS rive_bridge_files)
+    if(NOT bridge_file STREQUAL "riveqsgrhirendernode.h")
+        configure_file(${rive_qt_upstream}/${bridge_file} ${rive_qt_src}/${bridge_file} COPYONLY)
+    endif()
+endforeach()
 file(GLOB_RECURSE rive_runtime_sources CONFIGURE_DEPENDS ${eyes_rive_runtime_SOURCE_DIR}/src/*.cpp)
 add_library(eyes-rive-runtime STATIC ${rive_runtime_sources})
 set_target_properties(eyes-rive-runtime PROPERTIES POSITION_INDEPENDENT_CODE ON AUTOMOC OFF)
@@ -37,6 +46,7 @@ file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/riveqtpath.cpp
 list(REMOVE_ITEM rive_qt_sources ${rive_qt_src}/riveqtpath.cpp)
 list(APPEND rive_qt_sources ${CMAKE_CURRENT_BINARY_DIR}/riveqtpath.cpp)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveAntialiasing.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveScheduling.cmake)
 qt_add_qml_module(EyesRive URI EyesRive VERSION 1.0 SHARED PLUGIN_TARGET EyesRive
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/EyesRive
     SOURCES ${rive_qt_sources} desktop/rive-settings.h)

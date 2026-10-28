@@ -87,7 +87,8 @@ public:
             m_hasPendingPointer = false;
             m_attentionPosition = m_pendingPointerPosition;
             m_hasPointerPosition = true;
-            Q_EMIT attentionChanged();
+            if (m_shown)
+                Q_EMIT attentionChanged();
         });
 
         m_fallbackCursorTimer.setInterval(140);
@@ -100,7 +101,6 @@ public:
                 return;
             setPointerPosition(QCursor::pos());
         });
-        m_fallbackCursorTimer.start();
     }
 
     AgentState state() const { return m_state; }
@@ -116,6 +116,21 @@ public:
         if (m_shown == shown)
             return;
         m_shown = shown;
+        if (!shown) {
+            m_pointerTimer.stop();
+            if (m_hasPendingPointer) {
+                m_attentionPosition = m_pendingPointerPosition;
+                m_hasPointerPosition = true;
+                m_hasPendingPointer = false;
+            }
+        }
+        if (shown && !m_kwinCursorTimer.isValid()
+            && QGuiApplication::platformName() == QLatin1String("xcb")) {
+            setPointerPosition(QCursor::pos());
+            m_fallbackCursorTimer.start();
+        } else {
+            m_fallbackCursorTimer.stop();
+        }
         Q_EMIT shownChanged();
         Q_EMIT attentionChanged();
     }
@@ -126,6 +141,7 @@ public Q_SLOTS:
     void SetPosition(int x, int y)
     {
         m_kwinCursorTimer.restart();
+        m_fallbackCursorTimer.stop();
         setPointerPosition(QPoint(x, y));
     }
 
@@ -157,6 +173,20 @@ private:
 
     void setPointerPosition(const QPoint &position)
     {
+        if ((m_hasPendingPointer && position == m_pendingPointerPosition)
+            || (!m_hasPendingPointer && m_hasPointerPosition
+                && position == m_attentionPosition))
+            return;
+        // Retain the latest global position while hidden, without a timer or
+        // bridge traffic. Showing the eyes publishes it with the visibility.
+        if (!m_shown) {
+            m_pointerTimer.stop();
+            m_hasPendingPointer = false;
+            m_attentionPosition = position;
+            m_pendingPointerPosition = position;
+            m_hasPointerPosition = true;
+            return;
+        }
         m_pendingPointerPosition = position;
         m_hasPendingPointer = true;
         if (!m_pointerTimer.isActive())
