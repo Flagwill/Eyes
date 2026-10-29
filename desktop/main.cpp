@@ -23,6 +23,7 @@
 #include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QScreen>
 #include <QSet>
 #include <QStandardPaths>
@@ -49,6 +50,50 @@ QString runtimeSocketPath()
     if (directory.isEmpty())
         directory = QDir::tempPath();
     return QDir(directory).filePath(QString::fromLatin1(kSocketName));
+}
+
+QString userVisibilityMarkerPath()
+{
+    const QByteArray configured = qgetenv("XDG_STATE_HOME").trimmed();
+    const QString stateHome = !configured.isEmpty()
+        ? QFile::decodeName(configured)
+        : QDir(QDir::homePath()).filePath(QStringLiteral(".local/state"));
+    return QDir(stateHome).filePath(
+        QStringLiteral("eyes/user-visibility"));
+}
+
+QString userSuppressionReason()
+{
+    QFile marker(userVisibilityMarkerPath());
+    if (!marker.exists())
+        return {};
+    if (!marker.open(QIODevice::ReadOnly))
+        return QStringLiteral("hidden");
+    const QString reason = QString::fromUtf8(marker.readAll()).trimmed();
+    return reason.isEmpty() ? QStringLiteral("hidden") : reason;
+}
+
+bool persistUserSuppression(const QString &reason)
+{
+    const QString path = userVisibilityMarkerPath();
+    if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+        return false;
+    QSaveFile marker(path);
+    if (!marker.open(QIODevice::WriteOnly))
+        return false;
+    marker.write(reason.toUtf8() + '\n');
+    if (!marker.commit())
+        return false;
+    QFile::setPermissions(
+        path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return true;
+}
+
+void removeUserSuppression()
+{
+    const QString path = userVisibilityMarkerPath();
+    if (QFileInfo::exists(path))
+        QFile::remove(path);
 }
 
 struct AgentState {
@@ -79,6 +124,7 @@ public:
         , m_attentionPosition(QCursor::pos())
         , m_pendingPointerPosition(m_attentionPosition)
     {
+        m_suppressionReason = userSuppressionReason();
         m_state.eyebrow = QStringLiteral("Eyes 桌面上线");
         m_completionTimer.setSingleShot(true);
         m_completionTimer.setInterval(4500);
@@ -112,6 +158,7 @@ public:
     AgentState state() const { return m_state; }
     QVariantMap stateMap() const { return m_state.toMap(); }
     bool shown() const { return m_shown; }
+    bool suppressed() const { return !m_suppressionReason.isEmpty(); }
     bool hasPointerPosition() const { return m_hasPointerPosition; }
     QPoint attentionPosition() const { return m_attentionPosition; }
 
@@ -119,6 +166,8 @@ public:
     {
         if (!shown)
             m_completionTimer.stop();
+        if (shown && suppressed())
+            return;
         if (m_shown == shown)
             return;
         m_shown = shown;
@@ -166,16 +215,33 @@ private:
         m_completionTimer.stop();
         m_state = {motion, eyebrow, title, detail};
         Q_EMIT stateChanged();
-        if (show)
+        if (show && !suppressed())
             setShown(true);
     }
 
     void playAction(QJsonObject action)
     {
+        if (suppressed())
+            return;
         setShown(true);
         action.insert(QStringLiteral("type"), QStringLiteral("action"));
         action.insert(QStringLiteral("sequence"), ++m_actionSequence);
         Q_EMIT actionTriggered(action);
+    }
+
+    void hideForUser()
+    {
+        m_suppressionReason = QStringLiteral("hidden");
+        if (!persistUserSuppression(m_suppressionReason))
+            qWarning() << "Eyes: unable to persist the user-hidden state";
+        setShown(false);
+    }
+
+    void showForUser()
+    {
+        m_suppressionReason.clear();
+        removeUserSuppression();
+        setShown(true);
     }
 
     void setPointerPosition(const QPoint &position)
@@ -201,6 +267,7 @@ private:
     }
 
     AgentState m_state;
+    QString m_suppressionReason;
     bool m_shown = false;
     QTimer m_completionTimer;
     QTimer m_pointerTimer;
@@ -250,7 +317,8 @@ QJsonObject EyesService::applyCommand(const QString &line)
         setState(QStringLiteral("happy"), QStringLiteral("工作完成"),
                  QStringLiteral("已经完成了"),
                  QStringLiteral("这一步做得很好，准备继续下一件"), true);
-        m_completionTimer.start();
+        if (!suppressed())
+            m_completionTimer.start();
     } else if (command == QLatin1String("activity")) {
         static const QJsonArray activities = [] {
             QFile file(QStringLiteral(":/assets/eyes/manifest.json"));
@@ -281,11 +349,14 @@ QJsonObject EyesService::applyCommand(const QString &line)
                  QStringLiteral("收到任务后，我会重新出现"), false);
         setShown(false);
     } else if (command == QLatin1String("show")) {
-        setShown(true);
+        showForUser();
     } else if (command == QLatin1String("hide")) {
-        setShown(false);
+        hideForUser();
     } else if (command == QLatin1String("toggle")) {
-        setShown(!m_shown);
+        if (m_shown)
+            hideForUser();
+        else
+            showForUser();
     } else if (command == QLatin1String("blink")) {
         playAction({
             {QStringLiteral("action"), QStringLiteral("blink")},
@@ -337,8 +408,13 @@ QJsonObject EyesService::applyCommand(const QString &line)
     } else if (command == QLatin1String("status")) {
         // Status is intentionally read-only.
     } else if (command == QLatin1String("demo")) {
-        Q_EMIT demoRequested();
+        if (!suppressed())
+            Q_EMIT demoRequested();
     } else if (command == QLatin1String("quit")) {
+        m_suppressionReason = QStringLiteral("quit");
+        if (!persistUserSuppression(m_suppressionReason))
+            qWarning() << "Eyes: unable to persist the user-quit state";
+        setShown(false);
         QTimer::singleShot(80, this, &EyesService::quitRequested);
     } else {
         return {
@@ -351,6 +427,7 @@ QJsonObject EyesService::applyCommand(const QString &line)
     return {
         {QStringLiteral("ok"), true},
         {QStringLiteral("visible"), m_shown},
+        {QStringLiteral("suppressed"), suppressed()},
         {QStringLiteral("motion"), m_state.motion},
         {QStringLiteral("title"), m_state.title},
     };
@@ -510,13 +587,14 @@ private:
     QList<QWebSocket *> m_sockets;
 };
 
-class WallpaperGuard final : public QObject
+class WallpaperController final : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit WallpaperGuard(QObject *parent = nullptr)
+    explicit WallpaperController(EyesService *service, QObject *parent = nullptr)
         : QObject(parent)
+        , m_service(service)
     {
         if (qEnvironmentVariableIsSet("EYES_DISABLE_WALLPAPER_GUARD"))
             return;
@@ -585,6 +663,7 @@ public:
                     reconcile();
             });
         }
+        runBlocking(Operation::Restore);
     }
 
 private:
@@ -688,6 +767,7 @@ private:
             QIODevice::ReadOnly);
     }
 
+    EyesService *m_service;
     QString m_configPath;
     QString m_scriptPath;
     QFileSystemWatcher m_watcher;
@@ -748,10 +828,14 @@ public:
 
         setupCursorDBus();
         setupTray();
-        m_wallpaperGuard = new WallpaperGuard(this);
+        m_wallpaperController = new WallpaperController(&m_service, this);
 
-        connect(&m_service, &EyesService::quitRequested,
-                m_application, &QCoreApplication::quit);
+        connect(&m_service, &EyesService::quitRequested, this, [this] {
+            m_demoTimer.stop();
+            if (m_wallpaperController)
+                m_wallpaperController->restoreBlocking();
+            QTimer::singleShot(0, m_application, &QCoreApplication::quit);
+        });
         connect(&m_service, &EyesService::demoRequested,
                 this, &DesktopApplication::playDemo);
         m_demoTimer.setInterval(3400);
@@ -773,22 +857,14 @@ public:
     }
 
     bool isPrimary() const { return m_primary; }
-    void showOverlay() { m_service.setShown(true); }
+    void showOverlay() { m_service.applyCommand(QStringLiteral("show")); }
     void playDemo();
 
 private:
     bool tryBecomePrimary()
     {
-        if (!m_lockFile->tryLock(80)) {
-            QLocalSocket existing;
-            existing.connectToServer(m_socketPath);
-            if (existing.waitForConnected(250)) {
-                existing.write("show\n");
-                existing.waitForBytesWritten(150);
-                existing.disconnectFromServer();
-            }
+        if (!m_lockFile->tryLock(80))
             return false;
-        }
         m_primary = true;
         QLocalServer::removeServer(m_socketPath);
         return true;
@@ -858,15 +934,26 @@ private:
         m_tray->setToolTip(QStringLiteral("Eyes"));
         auto *menu = new QMenu;
         menu->addAction(QStringLiteral("显示双眼"), this,
-                        [this] { m_demoTimer.stop(); m_service.setShown(true); });
-        menu->addAction(QStringLiteral("暂时隐藏"), this,
-                        [this] { m_demoTimer.stop(); m_service.setShown(false); });
+                        [this] {
+                            m_demoTimer.stop();
+                            m_service.applyCommand(QStringLiteral("show"));
+                        });
+        menu->addAction(QStringLiteral("隐藏 Eyes"), this,
+                        [this] {
+                            m_demoTimer.stop();
+                            m_service.applyCommand(QStringLiteral("hide"));
+                        });
         menu->addSeparator();
         menu->addAction(QStringLiteral("预览完整工作周期"), this,
-                        [this] { playDemo(); });
+                        [this] {
+                            m_service.applyCommand(QStringLiteral("show"));
+                            playDemo();
+                        });
         menu->addSeparator();
-        menu->addAction(QStringLiteral("退出"), m_application,
-                        &QCoreApplication::quit);
+        menu->addAction(QStringLiteral("退出"), this, [this] {
+            m_demoTimer.stop();
+            m_service.applyCommand(QStringLiteral("quit"));
+        });
         m_tray->setContextMenu(menu);
         connect(m_tray, &QSystemTrayIcon::activated, this,
                 [this](QSystemTrayIcon::ActivationReason reason) {
@@ -888,7 +975,7 @@ private:
     EyesService m_service;
     WallpaperBridge *m_wallpaperBridge = nullptr;
     QSystemTrayIcon *m_tray = nullptr;
-    WallpaperGuard *m_wallpaperGuard = nullptr;
+    WallpaperController *m_wallpaperController = nullptr;
     QTimer m_demoTimer;
     QStringList m_demoCommands;
     int m_demoIndex = 0;

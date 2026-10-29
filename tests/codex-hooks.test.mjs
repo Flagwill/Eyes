@@ -81,6 +81,25 @@ print(json.dumps(commands))
   assert.deepEqual(readdirSync(stateDirectory), []);
 });
 
+test('Codex activity never launches or updates Eyes while the user suppressed it', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-codex-hidden-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const result = await pythonHook(`
+marker = hook.visibility_marker()
+marker.parent.mkdir(parents=True, exist_ok=True)
+marker.write_text('hidden\\n', encoding='utf-8')
+calls = []
+hook.send_to_running_host = lambda command: calls.append(('socket', command)) or False
+hook.launch_host = lambda command: calls.append(('launch', command))
+hook.dispatch('start')
+hook.dispatch('activity reading')
+hook.dispatch('waiting')
+print(json.dumps(calls))
+`, {}, { ...process.env, XDG_STATE_HOME: root });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), []);
+});
+
 function pythonHook(script, input, env = process.env) {
   return run('python3', ['-c', `
 import importlib.util, json, pathlib, sys

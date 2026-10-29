@@ -21,6 +21,46 @@ def runtime_socket() -> Path:
     return Path("/tmp") / f"eyes-{os.getuid()}.sock"
 
 
+def visibility_marker() -> Path:
+    state_home = Path(
+        os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+    )
+    return state_home / "eyes" / "user-visibility"
+
+
+def user_suppressed() -> bool:
+    try:
+        visibility_marker().stat()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
+def persist_user_suppression(reason: str) -> None:
+    marker = visibility_marker()
+    marker.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    marker.parent.chmod(0o700)
+    temporary = marker.with_name(f".{marker.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(f"{reason}\n", encoding="utf-8")
+        temporary.chmod(0o600)
+        os.replace(temporary, marker)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def clear_user_suppression() -> None:
+    try:
+        visibility_marker().unlink()
+    except FileNotFoundError:
+        pass
+
+
 def executable_candidates() -> list[Path]:
     explicit = os.environ.get("EYES_DESKTOP_BIN")
     script_dir = Path(__file__).resolve().parent
@@ -139,7 +179,12 @@ def send(command: str, *, autostart: bool = True) -> dict:
         client = connect(0.05)
     except OSError:
         if not autostart:
-            return {"ok": False, "running": False}
+            return {
+                "ok": True,
+                "running": False,
+                "visible": False,
+                "suppressed": user_suppressed(),
+            }
         launch_desktop()
         client = connect(8.0)
 
@@ -191,6 +236,9 @@ def main() -> int:
     primary_command = command.split(maxsplit=1)[0]
 
     if primary_command == "host-start":
+        if user_suppressed():
+            print("Eyes 保持用户隐藏状态")
+            return 0
         try:
             with connect(0.05):
                 pass
@@ -206,7 +254,27 @@ def main() -> int:
         return 0
 
     try:
-        response = send(command, autostart=primary_command != "status")
+        if primary_command in {"show", "toggle"}:
+            clear_user_suppression()
+        elif primary_command == "hide":
+            persist_user_suppression("hidden")
+        elif primary_command == "quit":
+            persist_user_suppression("quit")
+    except OSError as error:
+        print(f"Eyes 无法保存显示意图：{error}", file=sys.stderr)
+        return 1
+
+    autostart = primary_command not in {
+        "status",
+        "hide",
+        "idle",
+        "quit",
+    }
+    if user_suppressed() and primary_command not in {"show", "toggle"}:
+        autostart = False
+
+    try:
+        response = send(command, autostart=autostart)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"Eyes 桌面组件连接失败：{error}", file=sys.stderr)
         return 1

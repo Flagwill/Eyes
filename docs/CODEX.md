@@ -19,6 +19,14 @@ Eyes 通过 Codex 官方 lifecycle hooks 接入本机 Codex，不依赖 Codex De
 
 Codex 0.149 支持 `Interrupt`、压缩与子智能体事件；用户级配置已接入这些事件。会话结束或进程正常退出时由 `SessionEnd` 收起画面。
 
+用户执行 `eyes hide`、托盘“隐藏 Eyes”或托盘“退出”后，适配器在
+`$XDG_STATE_HOME/eyes/user-visibility`（默认 `~/.local/state/eyes/user-visibility`）
+中看到持久抑制标记，会在连接 socket 或启动宿主之前直接返回。因此后续任务、工具、
+权限请求、完成与会话结束都不会把 Eyes 重新显示。只有 `eyes show` 或托盘“显示双眼”
+清除标记后，生命周期 hooks 才恢复驱动。该文件只有 `0600` 权限，内容仅为
+`hidden` 或 `quit`，不包含 Codex 会话或工具内容。见
+[ADR-011](decisions/011-user-visibility-intent.md)。
+
 适配器按会话保存活动工具 ID、子智能体 ID、最近一次结构化失败的类型与连续失败次数，以及去重和抖动抑制所需的最近命令。并行的 `PreToolUse` / `PostToolUse` 会恢复仍在运行的动作，不会提前切回思考；同类工具在失败后再次启动会显示 `activity retrying`，成功完成后清除重试上下文。同类动作连续失败两次会显示 `activity blocked`，等待下一次尝试或用户介入。每个新工具动作都会立即显示；约 0.3 秒内紧跟的“恢复外层工具”或“切回思考”会被合并，避免一次写文件刚显示 `creating` 就被外层 shell 的 `running` 覆盖。等待权限、失败、重试、总结、阻塞、完成和结束也始终立即显示。重复状态不会重播动画。没有 ID 的调用与子智能体调用独立配对。旧状态文件会自动迁移。所有异常都被吞掉并以退出码 `0` 结束，不会阻塞或改变 Codex 的工具权限。
 
 ## 工具动作识别
@@ -46,7 +54,7 @@ Codex 0.149 支持 `Interrupt`、压缩与子智能体事件；用户级配置�
 
 `functions.exec` 包装器可识别明确的嵌套工具名称及简单的 `cmd` 字面量；复杂脚本、多种并行操作、变量拼接、命令别名或封装工具中的实际语义不能可靠推断。优先显示可确认的类别。需要精确表现其他内部阶段时仍可由 harness 显式调用 `eyes activity ID`；hook 不读取 transcript，也不根据模型私有推理猜测活动。完整状态见 [README](../README.md) 与 [动作台本](MOTION.md)。
 
-Hook 使用同步模式，因为 Codex 会并发启动同一事件及相邻事件的 command hooks。适配器本身只做一次短 socket 写入；如果 Eyes 后台尚未运行，则安静地启动它。改成后台 hook 反而可能让 `PostToolUse` 早于 `PreToolUse` 更新状态。
+Hook 使用同步模式，因为 Codex 会并发启动同一事件及相邻事件的 command hooks。适配器本身只做一次短 socket 写入；如果 Eyes 后台尚未运行且没有用户抑制标记，则安静地启动它。改成后台 hook 反而可能让 `PostToolUse` 早于 `PreToolUse` 更新状态。
 
 ## 启用
 

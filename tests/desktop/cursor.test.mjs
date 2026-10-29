@@ -10,7 +10,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 // host's pointer fallback and its 32 ms coalescing, without moving the mouse.
 test('stationary KWin attention survives fallback ticks and reconnects', async (t) => {
   const runtime = mkdtempSync(join(tmpdir(), 'eyes-cursor-test-'));
-  const env = { ...process.env, XDG_RUNTIME_DIR: runtime,
+  const state = join(runtime, 'state');
+  const env = { ...process.env, XDG_RUNTIME_DIR: runtime, XDG_STATE_HOME: state,
     QT_QPA_PLATFORM: 'offscreen', EYES_DISABLE_WALLPAPER_GUARD: '1' };
   const host = spawn(resolve('build/eyes-desktop'), ['--hidden'], { env, stdio: 'ignore' });
   let socket;
@@ -47,6 +48,8 @@ test('stationary KWin attention survives fallback ticks and reconnects', async (
   const client = resolve('bin/eyes');
   execFileSync(client, ['show'], { env });
   await delay(850);
+  assert.equal(JSON.parse(execFileSync(client, ['status'], { env })).visible,
+    true, 'explicit show must clear any prior suppression');
   assert.equal(samples.at(-1).active, false, 'unknown cursor must not target the origin');
 
   const qdbus = join(process.env.QT6_BIN_DIR || '/usr/lib/qt6/bin', 'qdbus');
@@ -56,6 +59,8 @@ test('stationary KWin attention survives fallback ticks and reconnects', async (
   await delay(1600);
   socket.close();
   socket = await connect();
+  assert.equal(JSON.parse(execFileSync(client, ['status'], { env })).visible,
+    true, 'a cursor reconnect must not hide Eyes');
   assert.deepEqual(samples.at(-1), { x: 320, y: 240, active: true });
   for (const attention of samples.slice(first)) {
     assert.deepEqual(attention, { x: 320, y: 240, active: true },

@@ -44,6 +44,23 @@ def state_directory() -> Path:
     return Path("/tmp") / f"eyes-codex-{os.getuid()}"
 
 
+def visibility_marker() -> Path:
+    state_home = Path(
+        os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+    )
+    return state_home / "eyes" / "user-visibility"
+
+
+def user_suppressed() -> bool:
+    try:
+        visibility_marker().stat()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
 def eyes_executable() -> Path | None:
     explicit = os.environ.get("EYES_CODEX_EYES")
     source_root = Path(__file__).resolve().parents[2]
@@ -98,6 +115,8 @@ def launch_host(command: str) -> None:
 
 
 def dispatch(command: str) -> None:
+    if user_suppressed():
+        return
     if not send_to_running_host(command):
         launch_host(command)
         # Wait for the host to receive the command it was launched with.

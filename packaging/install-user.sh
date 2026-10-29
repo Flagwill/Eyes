@@ -4,6 +4,8 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 install_prefix="${EYES_INSTALL_PREFIX:-$HOME/.local}"
 config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+state_home="${XDG_STATE_HOME:-$HOME/.local/state}"
+visibility_marker="$state_home/eyes/user-visibility"
 build_dir="$project_root/build"
 
 cmake -S "$project_root" -B "$build_dir" -G Ninja \
@@ -73,6 +75,7 @@ cat >"$systemd_dir/eyes-desktop.service" <<EOF
 Description=Eyes desktop presence
 After=plasma-plasmashell.service
 PartOf=graphical-session.target
+ConditionPathExists=!$visibility_marker
 
 [Service]
 Type=simple
