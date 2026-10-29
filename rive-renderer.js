@@ -36,6 +36,7 @@ export class RiveRenderer {
   draw(engine) {
     const frame=engine.lastFrame;
     if(!frame)return;
+    globalThis.EyesCore.applyFaceProjection(this.canvas,engine);
     for(const [key,value] of Object.entries(frame.riveInputs)) {
       if(!this.inputs[key])throw new Error(`Missing Rive input: ${key}`);
       this.inputs[key].value=value;
@@ -50,8 +51,8 @@ export class RiveRenderer {
     // Match the shared immersive layout, including its compressed vertical gaze.
     const sx=engine.dpr*layout.scale*(1+frame.bounce);
     const sy=engine.dpr*layout.scale*layout.stretchY*(1-frame.bounce);
-    const cos=Math.cos(pose.tilt),sin=Math.sin(pose.tilt),m=this.matrix;
-    m.xx=sx*cos; m.xy=sy*sin; m.yx=-sx*sin; m.yy=sy*cos;
+    const m=this.matrix;
+    m.xx=sx; m.xy=0; m.yx=0; m.yy=sy;
     m.tx=engine.dpr*(layout.centerX+layout.scale*pose.gazeX)-m.xx*280-m.yx*170;
     m.ty=engine.dpr*(layout.centerY+layout.scale*layout.stretchY*pose.gazeY*layout.gazeScaleY)-m.xy*280-m.yy*170;
     renderer.transform(m.xx,m.xy,m.yx,m.yy,m.tx,m.ty);
@@ -92,5 +93,6 @@ export function attachRive(engine,canvas,onReady=()=>{}) {
     canvas.dataset.renderer='fallback';
     console.error('Eyes Rive renderer failed; using shared spline renderer.',error);
   });
-  return {ready,destroy(){destroyed=true;renderer?.destroy();engine.draw=original;}};
+  return {ready,destroy(){destroyed=true;renderer?.destroy();engine.draw=original;
+    canvas.style.removeProperty('transform');canvas.style.removeProperty('transform-origin');}};
 }

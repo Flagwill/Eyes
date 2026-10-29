@@ -76,6 +76,24 @@ Item {
             verify(surface.eyeGeometry.y > openHeight * 0.99);
         }
 
+        function test_reference_projects_the_whole_face() {
+            eyes.simulation.autonomous=false;
+            eyes.simulation.setPointer(40,-20,true);
+            for(var i=0;i<300;i++) eyes.advance(1/60);
+            wait(50);
+            var image=grabImage(eyes),m=eyes.frame.face.matrix;
+            for(var side of ["l","r"]) {
+                var surface=findChild(eyes,"eyeSurface-"+side);
+                var p=surface.mapToItem(eyes,-surface.surfaceOrigin.x,-surface.surfaceOrigin.y);
+                var px=eyes.pose[side+"x"],py=eyes.pose[side+"y"]+modelEye(side).offsetY;
+                var w=m[12]*px+m[13]*py+1;
+                var expectedX=eyes.layout.centerX+eyes.layout.scale*(eyes.pose.gazeX+(m[0]*px+m[1]*py)/w);
+                verify(Math.abs(p.x-expectedX)<.05,"Reference GPU must share the face projection");
+                verify(image.green(Math.round(p.x*image.width/eyes.width),
+                    Math.round(p.y*image.height/eyes.height))<180,"Projected reference eye must render");
+            }
+        }
+
         function test_crisp_silhouette_data() {
             return test_emotions_data();
         }
@@ -247,18 +265,28 @@ Item {
                     var x = surface.eyeGeometry.x * u / 2;
                     var boundary = Core.EyesCore.getEyeEdges(model, u);
                     var y = edge < 0 ? boundary.upper : boundary.lower;
-                    var before = Core.EyesCore.getEyeEdges(model, u - 0.0001);
-                    var after = Core.EyesCore.getEyeEdges(model, u + 0.0001);
-                    var slope = edge < 0 ? after.upper - before.upper : after.lower - before.lower;
-                    slope /= model.width * 0.0001;
-                    var normal = Math.hypot(1, slope);
-                    var distance = (inside ? -2 : 2) / pixelsPerUnit;
-                    x -= edge * slope * distance / normal;
-                    y += edge * distance / normal;
                     var point = surface.mapToItem(eyes,
                         x - surface.surfaceOrigin.x, y - surface.surfaceOrigin.y);
-                    var green = pixels.green(Math.round(point.x * pixels.width / eyes.width),
-                        Math.round(point.y * pixels.height / eyes.height));
+                    var adjacentU = u + 0.001;
+                    var adjacent = Core.EyesCore.getEyeEdges(model, adjacentU);
+                    var adjacentPoint = surface.mapToItem(eyes,
+                        surface.eyeGeometry.x * adjacentU / 2 - surface.surfaceOrigin.x,
+                        (edge < 0 ? adjacent.upper : adjacent.lower) - surface.surfaceOrigin.y);
+                    var tangentX = adjacentPoint.x - point.x;
+                    var tangentY = adjacentPoint.y - point.y;
+                    var normalLength = Math.hypot(tangentX, tangentY);
+                    var normalX = -tangentY / normalLength;
+                    var normalY = tangentX / normalLength;
+                    if ((edge < 0 && normalY > 0) || (edge > 0 && normalY < 0)) {
+                        normalX = -normalX;
+                        normalY = -normalY;
+                    }
+                    var outputPixels = pixels.width / eyes.width;
+                    var offset = (inside ? -2 : 2) / outputPixels;
+                    var sampleX = point.x + normalX * offset;
+                    var sampleY = point.y + normalY * offset;
+                    var green = pixels.green(Math.round(sampleX * pixels.width / eyes.width),
+                        Math.round(sampleY * pixels.height / eyes.height));
                     if (inside) verify(green < 145, "Sloped lids must retain a solid eye surface");
                     else compare(green, 255, "Sloped lids must clip cleanly, without a ghost edge");
                 }

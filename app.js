@@ -94,7 +94,7 @@ window.addEventListener('resize', () => requestAnimationFrame(updatePointer));
 window.addEventListener('scroll', updatePointer, { passive: true });
 
 $('#eyes').addEventListener('click', (event) => {
-  const rect = eyes.canvas.getBoundingClientRect();
+  const rect = stage.getBoundingClientRect();
   const distance = Math.hypot((event.clientX - rect.left - eyes.layout.centerX) / eyes.scale, (event.clientY - rect.top - eyes.layout.centerY) / eyes.scale);
   if (distance > 220) {
     eyes.look((event.clientX - rect.left - rect.width / 2) / (rect.width / 2), (event.clientY - rect.top - rect.height / 2) / (rect.height / 2));

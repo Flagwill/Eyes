@@ -11,6 +11,8 @@ Item {
     readonly property var pose: frame ? frame.pose : EyeCore.EyesCore.getPose("idle")
     readonly property var layout: EyeCore.EyesCore.getLayout(width, height, true)
     readonly property real renderPixelRatio: Math.max(1, Screen.devicePixelRatio)
+    readonly property var faceMatrix: EyeCore.EyesCore.getFaceScreenMatrix(
+        frame && frame.face ? frame.face : ({matrix: EyeCore.EyesCore.getFaceMatrix(0, 0, 0)}), layout)
     readonly property var inputs: frame ? frame.riveInputs : ({idlestill: 100})
     readonly property alias renderer: riveItem
     readonly property bool loaded: riveItem.loadingStatus === Rive.RiveQtQuickItem.Loaded
@@ -25,7 +27,12 @@ Item {
         x: scene.layout.centerX + scene.pose.gazeX * scene.layout.scale
         y: scene.layout.centerY + scene.pose.gazeY * scene.layout.gazeScaleY *
             scene.layout.scale * scene.layout.stretchY
-        rotation: scene.pose.tilt * 180 / Math.PI
+        transform: Matrix4x4 {
+            readonly property var m: scene.faceMatrix
+            matrix: Qt.matrix4x4(m[0], m[1], m[2], m[3],
+                m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11],
+                m[12], m[13], m[14], m[15])
+        }
 
         Rive.RiveQtQuickItem {
             id: riveItem

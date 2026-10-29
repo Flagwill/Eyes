@@ -72,6 +72,18 @@ Item {
             const y = Math.round(p.y * image.height / eyes.height);
             return {r: image.red(x,y), g: image.green(x,y), b: image.blue(x,y)};
         }
+        function contourNormal(side, u, edge) {
+            const origin = point(side, u, edge);
+            const adjacent = point(side, u + 0.001, edge);
+            const tx = adjacent.x - origin.x, ty = adjacent.y - origin.y;
+            const length = Math.hypot(tx, ty);
+            let nx = -ty / length, ny = tx / length;
+            if ((edge < 0 && ny > 0) || (edge > 0 && ny < 0)) {
+                nx = -nx;
+                ny = -ny;
+            }
+            return {x:nx, y:ny, point:origin};
+        }
         function test_all_expressions_data() {
             return Core.EyesCore.EXPRESSIONS.map(e => ({tag:e.id}));
         }
@@ -85,10 +97,18 @@ Item {
                 verify(center.b > center.r + 20 && center.g < 150,
                     "The requested expression must render as an opaque purple eye");
                 for (const u of [-.8,-.6,-.4,-.2,0,.2,.4,.6,.8]) {
-                    const inset = 3 / (eyes.renderer.height / 340);
+                    const outputPixels = image.width / eyes.width;
+                    const inset = 3 / outputPixels;
                     for (const edge of [-1,1]) {
-                        const inside = sample(image,point(side,u,edge,-edge*inset));
-                        const outside = sample(image,point(side,u,edge,edge*inset));
+                        const normal = contourNormal(side,u,edge);
+                        const inside = sample(image, {
+                            x:normal.point.x-normal.x*inset,
+                            y:normal.point.y-normal.y*inset,
+                        });
+                        const outside = sample(image, {
+                            x:normal.point.x+normal.x*inset,
+                            y:normal.point.y+normal.y*inset,
+                        });
                         verify(inside.g < 150,"The vector contour must agree with the shared spline");
                         verify(outside.g > 250,"No feathering or glow may escape the vector contour");
                     }
@@ -248,6 +268,50 @@ Item {
         function modelPoint(x,y) {
             return eyes.renderer.mapToItem(eyes,(280+x)/560*eyes.renderer.width,
                 (170+y)/340*eyes.renderer.height);
+        }
+        function test_face_perspective_data() {
+            const rows=[];
+            for(const e of Core.EyesCore.EXPRESSIONS) for(const direction of [-1,1])
+                rows.push({tag:e.id+"-"+direction,emotion:e.id,direction:direction});
+            return rows;
+        }
+        function test_face_perspective(data) {
+            eyes.simulation.follow=true;
+            eyes.simulation.setPointer(data.direction*40,-20,true);
+            settle(data.emotion);
+            const image=grabImage(eyes);
+            for(const x of [-112,112]) {
+                const actual=modelPoint(x,0),m=eyes.frame.face.matrix;
+                const w=m[12]*x+1;
+                const expectedX=eyes.layout.centerX+eyes.pose.gazeX*eyes.layout.scale+
+                    m[0]*x/w*eyes.layout.scale;
+                const expectedY=eyes.layout.centerY+eyes.pose.gazeY*eyes.layout.scale*
+                    eyes.layout.stretchY*eyes.layout.gazeScaleY+m[4]*x/w*
+                    eyes.layout.scale*eyes.layout.stretchY;
+                verify(Math.abs(actual.x-expectedX)<.05 && Math.abs(actual.y-expectedY)<.05,
+                    "Qt must use the shared perspective division, including high DPI");
+            }
+            for(const side of ["l","r"])
+                verify(sample(image,point(side,0,0)).g<180,
+                    "Turned eyes must actually render at their projected surface centers");
+            function span(x) {
+                const a=modelPoint(x,-20),b=modelPoint(x,20);
+                return Math.hypot(a.x-b.x,a.y-b.y);
+            }
+            verify(data.direction>0 ? span(-112)>span(112) : span(112)>span(-112),
+                "The near side must grow while the opposite side recedes");
+        }
+        function test_small_elements_share_the_face_plane() {
+            eyes.simulation.follow=true;
+            eyes.simulation.accents=true;
+            eyes.simulation.setPointer(40,-20,true);
+            settle("curious");
+            const p=modelPoint(214.9,-88.3);
+            verify(sample(grabImage(eyes),p).g<240,"The question mark must turn with both eyes");
+            eyes.simulation.blink();eyes.advance(.05);eyes.advance(.05);wait(90);
+            verify(sample(grabImage(eyes),p).g<240,"Turning accessories must remain independent of blink squash");
+            eyes.simulation.accents=false;eyes.advance(0);wait(90);
+            verify(sample(grabImage(eyes),p).g>250,"The turned accessory must still obey visibility");
         }
         function test_accessories_data() {
             return [

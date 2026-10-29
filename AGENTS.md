@@ -26,6 +26,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 ## 目录地图
 
 - `eyes-core.js`：共享眼睛几何、表情参数、弹簧、高光、眨眼和 Canvas 渲染核心。
+- `frame.face`：共享整体三维朝向与透视矩阵，覆盖眼睛、高光和全部小元素；正 yaw 向右看时左侧出屏、右侧入屏。朝向弹簧稍迟于视线；相机距离为 850 模型单位，yaw/pitch 限幅为 ±0.38/±0.28 弧度。浏览器 CSS 与桌面 Matrix4x4 共用 getFaceMatrix/getFaceScreenMatrix，不在宿主复制角度参数或重复叠加 tilt。浏览器尺寸使用 clientWidth/clientHeight，指针使用未变换舞台坐标，不用投影后的画布边界反馈布局。辅助元素在整体投影内、眨眼压缩外。见 ADR-010。
 - `ACTIVITIES` 是 20 种工作状态目录，`EXPRESSIONS` 合并八种情绪与工作状态；各状态共用眼形、起势、三种动作、视线和道具弹簧。`eyes activity ID` / `setActivity(ID)` 为精确入口。活动元数据随 Rive manifest 生成并嵌入 Qt 宿主，不在 C++ 维护第二份目录。新增状态须同步 QML 的五个小写输入、Rive 素材、台本与全状态 GPU 回归。纸笔、终端等道具由共享 `accentDesigns` 绘制正面、厚度与切面明暗；`propA/B/C` 驱动落笔、输出、连接和翻页，与眼睑同拍。`getPropViewX/Y` 按视线做透视缩放与旋转，Rive 必须用 `propbase` 加四个方向的 Direct blend 每帧重置基准，禁止恢复会残留前帧变换的 1D 透视混合。道具不随眨眼压扁；见 ADR-009。
 - `assets/eyes/eyes.riv`、`rive-renderer.js`：浏览器与桌面默认播放的同一份 Rive 素材及 WASM 适配。Rive 使用真实状态机和向量渲染；Canvas 样条绘制保留为浏览器降级路径。
 - `tools/build-rive.mjs`：从共享姿态和动作函数生成 RML，并用本地 Rive CLI 编译素材。修改共享核心或生成器后运行 `EYES_RIVE_CLI=/path/to/rive npm run eyes:author`，同步提交 `.riv` 和 manifest；测试核验源码与素材校验值。普通构建不需要 CLI，不登录、不上传。

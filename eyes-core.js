@@ -260,6 +260,51 @@ var EyesCore = (function () {
     return result;
   }
 
+  // One face plane carries eyes, clipped lights and accessories. Positive yaw
+  // brings the left edge toward the viewer, as the gaze turns right. Keep the
+  // camera in model units so perspective is independent of display size/DPR.
+  function getFaceTarget(pose) {
+    function limit(value, bound) { return Math.max(-bound, Math.min(bound, value)); }
+    return {
+      yaw: limit(pose.gazeX / 40 * .34 + pose.curious * .025 - pose.confused * .045, .38),
+      pitch: limit(pose.gazeY / 28 * .24 + pose.sleepy * .075 - pose.happy * .065 - pose.surprised * .055, .28),
+    };
+  }
+
+  function getFaceMatrix(yaw, pitch, roll) {
+    var cy = Math.cos(yaw), sy = Math.sin(yaw);
+    var cp = Math.cos(pitch), sp = Math.sin(pitch);
+    var cr = Math.cos(roll || 0), sr = Math.sin(roll || 0);
+    // Project Ry * Rx * Rz onto z=0. Flattening the output depth avoids Qt's
+    // implicit camera and CSS clipping disagreeing; homogeneous w retains
+    // the true perspective division. Row-major, matching Qt.matrix4x4.
+    return [cy*cr+sy*sp*sr, -cy*sr+sy*sp*cr, 0, 0,
+      cp*sr, cp*cr, 0, 0,
+      0, 0, 1, 0,
+      (sy*cr-cy*sp*sr)/850, (-sy*sr-cy*sp*cr)/850, 0, 1];
+  }
+
+  function getFaceScreenMatrix(face, layout) {
+    var m = face.matrix.slice(), sx = Math.max(.0001, layout.scale);
+    var sy = sx * layout.stretchY;
+    m[1] *= sx / sy; m[4] *= sy / sx;
+    m[12] /= sx; m[13] /= sy;
+    return m;
+  }
+
+  function applyFaceProjection(canvas, simulation) {
+    if (!canvas || !canvas.style || !simulation.lastFrame) return;
+    var frame = simulation.lastFrame, layout = simulation.layout;
+    var matrix = getFaceScreenMatrix(frame.face, layout);
+    // CSS takes column-major order. The origin follows gaze translation but
+    // never feeds back into the layout or pointer coordinate system.
+    var css = [];
+    for (var col = 0; col < 4; col++) for (var row = 0; row < 4; row++) css.push(matrix[row*4+col]);
+    canvas.style.transformOrigin = (layout.centerX + layout.scale*frame.pose.gazeX) + 'px ' +
+      (layout.centerY + layout.scale*layout.stretchY*frame.pose.gazeY*layout.gazeScaleY) + 'px';
+    canvas.style.transform = 'matrix3d(' + css.join(',') + ')';
+  }
+
   function getEyeGeometry(pose, side, blink, breathe) {
     var geometry = {
       width: Math.max(30, pose[side + 'w'] * (1 + breathe + blink * 0.025)),
@@ -717,6 +762,7 @@ var EyesCore = (function () {
       x: new Spring(0, 180, 28),
       y: new Spring(0, 180, 28),
     };
+    this.face = {yaw: new Spring(0, 95, 21), pitch: new Spring(0, 85, 20)};
     this.attentionTarget = { x: 0, y: 0 };
     this.attentionAt = -10;
     this.emotionAt = 0;
@@ -875,6 +921,11 @@ var EyesCore = (function () {
     values.lightGazeX = this.lightGaze.x.step(lightTargetX, dt);
     values.lightGazeY = this.lightGaze.y.step(lightTargetY, dt);
     values.attentionAccent = reduce ? 0 : attentionEnvelope(t - this.attentionAt);
+    var faceTarget = getFaceTarget(values);
+    this.face.yaw.damping = reduce ? 30 : 21;
+    this.face.pitch.damping = reduce ? 30 : 20;
+    var faceYaw = this.face.yaw.step(faceTarget.yaw, dt);
+    var facePitch = this.face.pitch.step(faceTarget.pitch, dt);
     if (!reduce) this.lightTime += dt;
     this.bounce *= Math.exp(-dt * 6);
     var bounce = reduce
@@ -940,6 +991,7 @@ var EyesCore = (function () {
     riveInputs.propdown = Math.max(0, Math.min(1, values.gazeY / 28)) * 100;
     this.lastFrame = {
       pose: values,
+      face: {yaw: faceYaw, pitch: facePitch, matrix: getFaceMatrix(faceYaw, facePitch, values.tilt)},
       riveInputs: riveInputs,
       blink: blinkAmount((t - this.blinkStart) / this.blinkDuration, this.doubleBlink),
       breathe: alive ? (Math.sin(naturalTime * 1.15) * 0.0035 +
@@ -1239,6 +1291,7 @@ var EyesCore = (function () {
   EyeSimulation.prototype.draw = function (ctx) {
     var frame = this.lastFrame;
     if (!frame) return;
+    applyFaceProjection(ctx.canvas, this);
     var pose = frame.pose;
     var blink = frame.blink;
     var alive = frame.alive;
@@ -1251,7 +1304,6 @@ var EyesCore = (function () {
 
     ctx.save();
     ctx.translate(pose.gazeX, pose.gazeY * this.layout.gazeScaleY);
-    ctx.rotate(pose.tilt);
     ctx.scale(1 + frame.bounce, 1 - frame.bounce);
     var breathe = frame.breathe;
     var sides = ['l', 'r'];
@@ -1297,6 +1349,10 @@ var EyesCore = (function () {
     getLayout: getLayout,
     getPointerGaze: getPointerGaze,
     getAttentionPose: getAttentionPose,
+    getFaceTarget: getFaceTarget,
+    getFaceMatrix: getFaceMatrix,
+    getFaceScreenMatrix: getFaceScreenMatrix,
+    applyFaceProjection: applyFaceProjection,
     getEyeGeometry: getEyeGeometry,
     getEyeEdges: Rig.edges,
     getSurfacePoint: Rig.surfacePoint,

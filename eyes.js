@@ -11,6 +11,9 @@ export const getPose = core.getPose;
 export const getLayout = core.getLayout;
 export const getPointerGaze = core.getPointerGaze;
 export const getAttentionPose = core.getAttentionPose;
+export const getFaceTarget = core.getFaceTarget;
+export const getFaceMatrix = core.getFaceMatrix;
+export const getFaceScreenMatrix = core.getFaceScreenMatrix;
 export const getEyeGeometry = core.getEyeGeometry;
 export const getEyeEdges = core.getEyeEdges;
 export const getSurfacePoint = core.getSurfacePoint;
@@ -78,7 +81,8 @@ export class Eyes {
   set paused(value) { this.engine.paused = Boolean(value); }
 
   resize() {
-    const rect = this.canvas.getBoundingClientRect();
+    // Perspective changes visual bounds, not the stage's layout dimensions.
+    const rect = {width: this.canvas.clientWidth, height: this.canvas.clientHeight};
     this.dpr = Math.min(devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(rect.width * this.dpr);
     this.canvas.height = Math.round(rect.height * this.dpr);

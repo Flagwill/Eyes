@@ -36,7 +36,7 @@ const scenes = catalog.map((emotion) => {
 function resize() {
   dirty = true;
   for (const {canvas, engine} of scenes) {
-    const rect = canvas.getBoundingClientRect();
+    const rect = {width: canvas.clientWidth, height: canvas.clientHeight};
     const dpr = Math.min(devicePixelRatio || 1, 2);
     canvas.width = Math.round(rect.width * dpr);
     canvas.height = Math.round(rect.height * dpr);
