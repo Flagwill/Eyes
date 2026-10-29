@@ -58,6 +58,9 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `packaging/kwin-eyes-cursor/`：将 KWin 全局光标发送到 `org.eyes.Desktop /Cursor`。
 - `docs/MOTION.md`：眼神表演、高光和注意力动作台本。
 - `docs/CODEX.md`：Codex Desktop hooks 映射、信任步骤和限制。
+- `docs/decisions/011-user-visibility-intent.md`：用户隐藏/退出高于智能体活动的持久状态约定。
+- `docs/decisions/012-opt-in-application-startup.md`：默认关闭登录自启动与应用菜单入口约定。
+- `docs/decisions/013-reversible-wallpaper-mount.md`：显示时临时挂载、隐藏时恢复原壁纸的状态文件与迁移约定。
 - `docs/gallery/`：开发过程中的视觉快照，不是运行时依赖。
 
 ## 运行接口
@@ -136,7 +139,11 @@ GPU 改动再运行 `npm run desktop:test`。光标桥修改时先停止桌面�
 
 涉及输出尺寸或像素密度时，运行 `npm run desktop:hidpi:test`。它使用实际 X11 / XWayland 窗口；Qt 6.12 的离屏高 DPI 截图有独立复现的问题，不能据其裁切画面判断 Rive 失败。原生目标尺寸必须包含 `Screen.devicePixelRatio`，并映射回相同逻辑构图。
 
-真实桌面验证应确认：壁纸层位于普通窗口下方；输入完全穿透；全局光标可驱动视线与高光；`complete` 自动淡出；安装后没有重复自启动项。不要用渲染截图替代以下自动回归：
+主桌面不曝光 QML 测试窗口时，使用隔离的虚拟 KWin 运行完整 `tests/qml`，不要用 offscreen 结果替代 GPU 回归。壁纸生命周期使用 `npm run desktop:wallpaper:test`；它和光标/活动测试一样需要先停止真实宿主以独占桥接端口。
+
+真实桌面验证应确认：壁纸层位于普通窗口下方；输入完全穿透；全局光标可驱动视线与高光；
+`complete` 自动淡出；安装后没有 XDG autostart 文件、用户服务为 disabled/inactive，
+应用菜单中可找到 Eyes 并可创建桌面快捷方式。不要用渲染截图替代以下自动回归：
 
 - 所有表情可连续收敛并适配极端屏幕比例。
 - 单 / 双眨眼时序正确。

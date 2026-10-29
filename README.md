@@ -199,7 +199,9 @@ npm run check
 npm run desktop:build
 ```
 
-`npm run desktop:test` 使用 Qt 6 检查 GPU 实际像素输出、全部 28 种姿态、透明边界、注意力与眨眼，需要支持 ShaderEffect 的 RHI 后端；当前会话无法打开测试窗口时，可用 `QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl npm run desktop:test` 运行离屏实际像素检查。Qt 6 工具目录可通过 `QT6_BIN_DIR` 指定。`npm test` 检查表情间的物理收敛、帧率稳定性、单 / 双眨眼时序、开心弯带几何、全屏构图、高光继承和注意力行为。`npm run check` 检查脚本语法，`npm run desktop:build` 编译 Qt 宿主。涉及安装或桌面层时应重新运行 `npm run desktop:install`、`eyes status`，并确认壁纸层位于普通窗口下方、输入完全穿透、全局光标能驱动视线和高光。
+`npm run desktop:test` 使用 Qt 6 检查 GPU 实际像素输出、全部姿态、透明边界、注意力与眨眼，需要真正曝光并支持 ShaderEffect 的 RHI 后端。当前主桌面无法暴露测试窗口时，应使用隔离的虚拟 KWin 会话，例如以 `dbus-run-session -- kwin_wayland --virtual --xwayland --socket eyes-gpu-test --width 2240 --height 1400 --exit-with-session <wrapper>` 启动 `qmltestrunner -input tests/qml`；不要把 `QT_QPA_PLATFORM=offscreen` 当作 GPU 回归，离屏后端会让 ShaderEffect 像素测试失败或挂起。Qt 6 工具目录可通过 `QT6_BIN_DIR` 指定。`npm test` 检查表情间的物理收敛、帧率稳定性、单 / 双眨眼时序、开心弯带几何、全屏构图、高光继承和注意力行为。`npm run check` 检查脚本语法，`npm run desktop:build` 编译 Qt 宿主。涉及安装或桌面层时应重新运行 `npm run desktop:install`、`eyes status`，确认应用菜单入口有效、没有 XDG autostart 项且 systemd 用户服务未启用，并检查壁纸层位于普通窗口下方、输入完全穿透、全局光标能驱动视线和高光。
+
+`npm run desktop:wallpaper:test` 使用临时配置、临时状态目录和独立 D-Bus 驱动真实桌面宿主，断言启动时先恢复旧挂载，并只在显示期间挂载、隐藏和退出时恢复。该测试与光标/活动测试一样要求先停止正在运行的 Eyes 宿主，以独占本地桥接端口；它不会修改真实 Plasma 配置。
 
 `npm run desktop:hidpi:test` 在 X11 / XWayland 实际窗口中验证双倍像素密度。Rive 目标尺寸包括屏幕像素密度，再映射回逻辑构图。测试窗口会适配屏幕，避免被窗口管理器裁切。Qt 6.12 离屏后端的高 DPI 截图连普通矩形也会截错，因此这项检查使用实际窗口后端。
 
