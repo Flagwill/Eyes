@@ -1,10 +1,17 @@
-import {EyeSimulation, EMOTIONS} from './eyes.js';
+import {EyeSimulation, EMOTIONS, ACTIVITIES} from './eyes.js';
 import {attachRive} from './rive-renderer.js';
 
 const faces = document.querySelector('#faces');
 let dirty = true;
 let transientUntil = 0;
-const scenes = EMOTIONS.map((emotion) => {
+const catalog = new URLSearchParams(location.search).get('view') === 'activities' ? ACTIVITIES : EMOTIONS;
+const activityView = catalog === ACTIVITIES;
+document.querySelector('h1').textContent = activityView ? '二十种工作状态，同一位搭档。' : '八种表情，同一双眼睛。';
+document.querySelector('#catalog').textContent = activityView ? '查看八种情绪' : '查看二十种工作状态';
+document.querySelector('#catalog').href = activityView ? 'gallery.html' : 'gallery.html?view=activities';
+document.querySelector('#faces').setAttribute('aria-label', activityView ? '工作状态对照' : '情绪对照');
+document.title = activityView ? 'Eyes — 工作状态对照' : 'Eyes — 八种表情对照';
+const scenes = catalog.map((emotion) => {
   const card = document.createElement('article');
   const canvas = document.createElement('canvas');
   canvas.setAttribute('role', 'img');

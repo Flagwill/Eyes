@@ -66,17 +66,39 @@ rmdir "$install_prefix/etc" 2>/dev/null || true
 
 mkdir -p "$config_home/autostart"
 desktop_exec="$install_prefix/bin/eyes-desktop"
+systemd_dir="$config_home/systemd/user"
+mkdir -p "$systemd_dir"
+cat >"$systemd_dir/eyes-desktop.service" <<EOF
+[Unit]
+Description=Eyes desktop presence
+After=plasma-plasmashell.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart="$desktop_exec" --hidden
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=plasma-plasmashell.service
+EOF
 cat >"$config_home/autostart/eyes-desktop-autostart.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Eyes
 Comment=登录后等待 Agent 工作状态
-Exec="$desktop_exec" --hidden
+Exec=systemctl --user start eyes-desktop.service
 Icon=eyes-desktop
 Terminal=false
 X-KDE-autostart-after=panel
 StartupNotify=false
 EOF
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    systemctl --user enable eyes-desktop.service >/dev/null 2>&1 || true
+fi
 
 if command -v kwriteconfig6 >/dev/null 2>&1; then
     kwriteconfig6 --file kwinrc --group Plugins \

@@ -69,9 +69,128 @@ formfactor=2
 plugin=org.kde.panel
 `);
   const output = execFileSync('python3', ['packaging/configure-plasma-wallpaper.py',
-    '--config', config, '--dry-run'], { encoding: 'utf8' });
-  assert.match(output, /--group Wallpaper --group org\.eyes\.wallpaper --group General --key Image --notify file:\/\/\/test-wallpaper\.jpg/);
-  assert.match(output, /--key wallpaperplugin --notify org\.eyes\.wallpaper/);
-  assert.doesNotMatch(output, /--group 5/);
-  assert.match(output, /configured desktop containments: 4/);
+    '--config', config, '--dry-run', '--json'], { encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'] });
+  const result = JSON.parse(output);
+  const actions = result.actions.flat().join(' ');
+  assert.match(actions, /--group Wallpaper --group org\.eyes\.wallpaper --group General --key Image --notify file:\/\/\/test-wallpaper\.jpg/);
+  assert.match(actions, /--key wallpaperplugin --notify org\.eyes\.wallpaper/);
+  assert.doesNotMatch(actions, /--group 5/);
+  assert.deepEqual(result.containments.map(item => item.id), ['4']);
+});
+
+test('wallpaper changes are carried into Eyes without overwriting panel or animation settings', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-wallpaper-switch-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const config = join(root, 'desktop-config');
+  const calls = join(root, 'calls');
+  const mocks = join(root, 'commands');
+  mkdirSync(mocks);
+  writeFileSync(config, `[Containments][7]
+formfactor=0
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.kde.image
+[Containments][7][Wallpaper][org.eyes.wallpaper][General]
+AnimationFps=30
+Image=file:///old.jpg
+Color=#000000
+FillMode=3
+[Containments][7][Wallpaper][org.kde.image][General]
+Image=file:///new.jpg
+Color=#ffffff
+FillMode=1
+[Containments][8]
+formfactor=2
+plugin=org.kde.panel
+wallpaperplugin=org.kde.image
+[Containments][8][Wallpaper][org.kde.image][General]
+Image=file:///panel.jpg
+`);
+  writeFileSync(join(mocks, 'kwriteconfig6'),
+    '#!/bin/sh\nprintf "%s\\n" "$*" >> "$EYES_TEST_RECORD"\n', { mode: 0o755 });
+  chmodSync(join(mocks, 'kwriteconfig6'), 0o755);
+  writeFileSync(join(mocks, 'qdbus6'),
+    '#!/bin/sh\nprintf "qdbus6 %s\\n" "$*" >> "$EYES_TEST_RECORD"\n', { mode: 0o755 });
+  chmodSync(join(mocks, 'qdbus6'), 0o755);
+  const output = execFileSync('python3', ['packaging/configure-plasma-wallpaper.py',
+    '--config', config, '--json', '--activate-runtime'], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${mocks}:${process.env.PATH}`,
+        EYES_TEST_RECORD: calls },
+    });
+  const result = JSON.parse(output);
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.pending, []);
+  const recorded = readFileSync(calls, 'utf8');
+  assert.match(recorded, /--key Image --notify file:\/\/\/new\.jpg/);
+  assert.match(recorded, /--key Color --notify #ffffff/);
+  assert.match(recorded, /--key FillMode --notify 1/);
+  assert.match(recorded, /--key wallpaperplugin --notify org\.eyes\.wallpaper/);
+  assert.match(recorded, /qdbus6 .*org\.kde\.PlasmaShell\.evaluateScript .*org\.eyes\.wallpaper/);
+  assert.doesNotMatch(recorded, /panel\.jpg|AnimationFps/);
+});
+
+test('wallpaper guard is idempotent after the active image is mounted', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-wallpaper-idempotent-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const config = join(root, 'desktop-config');
+  writeFileSync(config, `[Containments][9]
+formfactor=0
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.eyes.wallpaper
+[Containments][9][Wallpaper][org.eyes.wallpaper][General]
+AnimationFps=30
+Image=file:///wallpaper.jpg
+Color=#123456
+FillMode=2
+`);
+  const output = execFileSync('python3', ['packaging/configure-plasma-wallpaper.py',
+    '--config', config, '--dry-run', '--json'], { encoding: 'utf8' });
+  for (const line of output.trim().split('\n')) {
+    if (!line.startsWith('{"ok"')) continue;
+    const result = JSON.parse(line);
+    assert.equal(result.ok, true);
+    assert.equal(result.changed, false);
+    assert.deepEqual(result.actions, []);
+  }
+});
+
+test('wallpaper packages resolve to a concrete image and pure colors remain valid', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-wallpaper-package-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const data = join(root, 'data');
+  const wallpaper = join(data, 'wallpapers/Sample/contents/images/5120x2880.jpg');
+  mkdirSync(dirname(wallpaper), { recursive: true });
+  writeFileSync(wallpaper, 'fixture');
+  const packageConfig = join(root, 'package-config');
+  writeFileSync(packageConfig, `[Containments][10]
+formfactor=0
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.kde.image
+[Containments][10][Wallpaper][org.kde.image][General]
+Image=file://${join(data, 'wallpapers/Sample')}
+`);
+  const packageOutput = execFileSync('python3', [
+    'packaging/configure-plasma-wallpaper.py', '--config', packageConfig,
+    '--dry-run', '--json'], {
+      encoding: 'utf8', env: { ...process.env, XDG_DATA_HOME: data },
+    });
+  assert.match(packageOutput, /5120x2880\.jpg/);
+
+  const colorConfig = join(root, 'color-config');
+  writeFileSync(colorConfig, `[Containments][11]
+formfactor=0
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.kde.color
+[Containments][11][Wallpaper][org.kde.color][General]
+Color=#aabbcc
+`);
+  const colorOutput = execFileSync('python3', [
+    'packaging/configure-plasma-wallpaper.py', '--config', colorConfig,
+    '--dry-run', '--json'], { encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'] });
+  const colorResult = JSON.parse(colorOutput);
+  assert.ok(colorResult.actions.some(
+    args => args.includes('Color') && args.includes('#aabbcc')));
 });

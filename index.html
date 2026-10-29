@@ -51,7 +51,9 @@
     <section class="studio" aria-label="动画控制台">
       <div class="studio-heading"><div><span class="section-index">01</span><h2>此刻，是什么心情？</h2><span class="section-subtitle">每一种神态，都有自己的节奏</span></div><button id="autonomy" class="toggle-control" aria-pressed="true"><span class="toggle"><i></i></span> 自然小动作</button></div>
       <div class="emotions" id="emotions"></div>
-      <a class="gallery-link" href="gallery.html">查看八种表情对照 ↗</a>
+      <a class="gallery-link" href="gallery.html">查看表情与工作状态对照 ↗</a>
+      <div class="studio-heading activity-heading"><div><span class="section-index">02</span><h2>正在忙什么？</h2><span class="section-subtitle">从听懂任务，到交出成果</span></div></div>
+      <div class="activities" id="activities" aria-label="智能体工作状态"></div>
       <div class="tools-row">
         <div class="motion-tools"><span class="tool-label">小动作</span><button class="button action" id="blink"><svg><use href="#i-eye"/></svg>眨眨眼 <kbd>空格</kbd></button><div class="gaze-pad" role="group" aria-label="视线方向"><button data-look="-1,-1" aria-label="看左上">↖</button><button data-look="0,-1" aria-label="向上看">↑</button><button data-look="1,-1" aria-label="看右上">↗</button><button data-look="-1,0" aria-label="向左看">←</button><button data-look="0,0" aria-label="看正前方">·</button><button data-look="1,0" aria-label="向右看">→</button><button data-look="-1,1" aria-label="看左下">↙</button><button data-look="0,1" aria-label="向下看">↓</button><button data-look="1,1" aria-label="看右下">↘</button></div><span class="look-label">四处看看</span></div>
         <div class="range-control"><label for="energy">活泼程度 <output id="energy-value">65%</output></label><input id="energy" type="range" min="0" max="100" value="65" aria-label="活泼程度"></div>

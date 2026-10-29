@@ -1,4 +1,4 @@
-import { Eyes, EyeSimulation, EMOTIONS, getPointerGaze } from './eyes.js';
+import { Eyes, EyeSimulation, EMOTIONS, ACTIVITIES, EXPRESSIONS, getPointerGaze } from './eyes.js';
 import {attachRive} from './rive-renderer.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -12,6 +12,9 @@ let dusk = false;
 let cursorPosition = null;
 
 $('#emotions').innerHTML = EMOTIONS.map((emotion, i) => `<button class="emotion-button" data-emotion="${emotion.id}" aria-pressed="${i === 0}"><span class="emotion-number">0${i + 1}</span><canvas class="mini-face" width="192" height="108" aria-hidden="true"></canvas><span>${emotion.short}</span></button>`).join('');
+$('#activities').innerHTML = [...new Set(ACTIVITIES.map(item => item.group))].map(group =>
+  `<div class="activity-group"><h3>${group}</h3><div class="activity-buttons">${ACTIVITIES.filter(item => item.group === group).map(item =>
+    `<button class="emotion-button activity-button" data-emotion="${item.id}" aria-pressed="false" title="${item.description}"><canvas class="mini-face" width="192" height="108" aria-hidden="true"></canvas><span>${item.short}</span></button>`).join('')}</div></div>`).join('');
 
 document.querySelectorAll('[data-emotion]').forEach((button) => {
   const thumbnail = new EyeSimulation({ reducedMotion: true });
@@ -27,18 +30,25 @@ document.querySelectorAll('[data-emotion]').forEach((button) => {
 });
 
 function selectEmotion(id, { interrupt = true, description } = {}) {
+  const emotion = EXPRESSIONS.find((item) => item.id === id);
+  if (!emotion) throw new RangeError(`Unknown expression: ${id}`);
   if (interrupt) stopDemo();
   clearTimeout(temporaryEmotion);
   temporaryToken++;
   petReturnEmotion = null;
   eyes.setEmotion(id);
-  const emotion = EMOTIONS.find((item) => item.id === id);
+  stage.classList.remove('completion-hidden');
   $('#emotion-name').textContent = emotion.name;
   $('#emotion-description').textContent = description || emotion.description;
   document.querySelectorAll('[data-emotion]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.emotion === id)));
+  if (id === 'complete') temporaryEmotion = setTimeout(() => stage.classList.add('completion-hidden'), 4500);
 }
 
 $('#emotions').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-emotion]');
+  if (button) selectEmotion(button.dataset.emotion);
+});
+$('#activities').addEventListener('click', event => {
   const button = event.target.closest('[data-emotion]');
   if (button) selectEmotion(button.dataset.emotion);
 });
@@ -130,14 +140,13 @@ function immersive(value) {
 $('#immersive').addEventListener('click', () => immersive(true));
 $('#exit-immersive').addEventListener('click', () => immersive(false));
 
-const CYCLE = [
-  { emotion: 'curious', duration: 3300, label: '收到任务', description: '收到！让我先看看这次要做什么。' },
-  { emotion: 'thinking', duration: 5200, label: '分析与规划', description: '先理清思路，把问题拆成几小步。' },
-  { emotion: 'focused', duration: 6000, label: '执行操作', description: '正在查找资料、使用工具，一步一步完成。' },
-  { emotion: 'confused', duration: 4200, label: '等待你的输入', description: '有个小问题需要你帮忙确认一下。' },
-  { emotion: 'focused', duration: 3500, label: '继续执行', description: '明白了，接着把最后一点做好。' },
-  { emotion: 'happy', duration: 4200, label: '任务完成', description: '完成啦！谢谢一起解决问题的你。' },
-];
+const CYCLE = ['listening','planning','reading','searching','skill','creating','editing',
+  'running','mcp','tool','delegating','testing','blocked','debugging','waiting','retrying',
+  'reviewing','saving','summarizing','complete'].map(id => {
+  const activity = ACTIVITIES.find(item => item.id === id);
+  return {emotion:id,duration:id === 'complete' ? 5100 : 3400,
+    label:activity.name,description:activity.description};
+});
 const totalDuration = CYCLE.reduce((sum, step) => sum + step.duration, 0);
 
 function stopDemo() {
@@ -166,6 +175,7 @@ function startDemo() {
     if (elapsed >= totalDuration) {
       stopDemo();
       selectEmotion('idle', { interrupt: false, description: '任务已完成，我会在这里等你。' });
+      stage.classList.add('completion-hidden');
       return;
     }
     let end = 0;
@@ -217,12 +227,24 @@ document.addEventListener('keydown', (event) => {
 // No synthetic lifecycle events are treated as real work in this standalone preview.
 window.eyes = Object.freeze({
   setEmotion: (id) => selectEmotion(id),
+  setActivity: (id) => {
+    globalThis.EyesCore.getActivity(id);
+    selectEmotion(id);
+  },
+  activities: Object.freeze(ACTIVITIES.map(item => Object.freeze({...item}))),
   blink: (double = false) => eyes.blink(double),
   look: (x, y) => eyes.look(x, y),
   start: () => selectEmotion('curious'),
   thinking: () => selectEmotion('thinking'),
   working: () => selectEmotion('focused'),
-  waiting: () => selectEmotion('confused'),
-  complete: () => selectEmotion('happy'),
-  idle: () => selectEmotion('idle'),
+  waiting: () => selectEmotion('waiting'),
+  complete: () => selectEmotion('complete'),
+  idle: () => { selectEmotion('idle'); stage.classList.add('completion-hidden'); },
+  hide: () => {
+    stopDemo();
+    clearTimeout(temporaryEmotion);
+    temporaryToken++;
+    stage.classList.add('completion-hidden');
+  },
+  show: () => stage.classList.remove('completion-hidden'),
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import Rive from '../node_modules/@rive-app/canvas-advanced/canvas_advanced.mjs';
-import {EyeSimulation,EMOTIONS,getPose} from '../eyes.js';
+import {EyeSimulation,EMOTIONS,ACTIVITIES,EXPRESSIONS,getPose} from '../eyes.js';
 
 const runtime=await Rive({wasmBinary:await readFile(new URL('../node_modules/@rive-app/canvas-advanced/rive.wasm',import.meta.url))});
 const bytes=await readFile(new URL('../assets/eyes/eyes.riv',import.meta.url));
@@ -105,19 +105,25 @@ test('authored eyelids retain a positive opening throughout every motion score',
 test('actual Rive entry poses carry a distinct readable onset for every emotion',()=>{
   const current=scene();
   try {
-    for(const {id} of EMOTIONS) {
+    for(const {id} of EXPRESSIONS) {
       for(const input of Object.values(current.inputs))input.value=0;
       current.inputs[id+'still'].value=100;
       current.machine.advanceAndApply(1/60);current.art.advance(1/60);
-      const base=current.art.node('r-eye');
-      const before={height:base.scaleY,y:base.y};
+      const before=['l','r'].map(side=>{
+        const node=current.art.node(side+'-eye');
+        return {height:node.scaleY,y:node.y};
+      });
       current.inputs[id+'entry'].value=100;
       current.machine.advanceAndApply(1/60);current.art.advance(1/60);
-      const expected=core.getEntryPose(id), actual=current.art.node('r-eye');
-      assert.ok(Math.abs(actual.scaleY-expected.rh)<.01,id+' entry height');
-      assert.ok(Math.abs(actual.y-(170+expected.ry))<.01,id+' entry lift');
-      assert.ok(Math.abs(actual.scaleY-before.height)+Math.abs(actual.y-before.y)>1,
-        id+' must carry the onset into rendered geometry');
+      const expected=core.getEntryPose(id);
+      let movement=0;
+      for(const [index,side]of ['l','r'].entries()) {
+        const actual=current.art.node(side+'-eye');
+        assert.ok(Math.abs(actual.scaleY-expected[side+'h'])<.01,id+' entry height');
+        assert.ok(Math.abs(actual.y-(170+expected[side+'y']))<.01,id+' entry lift');
+        movement+=Math.abs(actual.scaleY-before[index].height)+Math.abs(actual.y-before[index].y);
+      }
+      assert.ok(movement>1,id+' must carry the onset into rendered geometry');
     }
   }finally{current.destroy();}
 });
@@ -191,7 +197,14 @@ test('actual Rive accessories share the authored poses, paused clock and default
   sim.follow=false;
   try {
     assert.equal(sim.accents,true);
-    for(const {id} of EMOTIONS) {
+    const brow=core.accentDesigns.find(design=>design.id==='brow-l');
+    assert.ok(brow.paths.flat().every(command=>command[0]!=='C'),
+      'brows must retain their faceted straight-edge geometry');
+    assert.equal(core.accentDesigns.some(design=>design.id==='glasses'),false,
+      'thinking glasses must stay removed');
+    assert.equal(Object.hasOwn(core.getPose('thinking'),'glassesPush'),false,
+      'the retired glasses push must not remain in the shared pose');
+    for(const {id} of EXPRESSIONS) {
       sim.setEmotion(id);
       for(let i=0;i<240;i++)current.advance(sim,1/60);
       assert.equal(current.inputs.accents.value,100);
@@ -216,5 +229,56 @@ test('actual Rive accessories share the authored poses, paused clock and default
     assert.equal(current.art.node('accent-star-main').y,held);
     sim.paused=false;sim.accents=false;current.advance(sim,1/60);
     assert.equal(current.inputs.accents.value,0);
+  }finally{current.destroy();}
+});
+
+test('every activity reaches its authored Rive eye shape through interrupted work and blinking props stay independent',()=>{
+  const current=scene(),sim=new EyeSimulation({reducedMotion:true});
+  sim.follow=false;
+  try {
+    for(const {id} of ACTIVITIES) {
+      sim.setActivity('running');
+      for(let i=0;i<7;i++)current.advance(sim,1/60);
+      sim.setActivity(id);
+      for(let i=0;i<240;i++)current.advance(sim,1/60);
+      for(const side of ['l','r']) {
+        const node=current.art.node(side+'-eye'),pose=getPose(id);
+        assert.ok(Math.abs(node.scaleX-pose[side+'w'])<.01,id+' width');
+        assert.ok(Math.abs(node.scaleY-pose[side+'h'])<.01,id+' height');
+      }
+      const states=core.getAccentStates(getPose(id));
+      const visible=Object.entries(states).filter(([name,state])=>name.startsWith('prop-')&&state.opacity>.01);
+      sim.blink();current.advance(sim,.05);current.advance(sim,.05);
+      assert.ok(current.art.node('l-blink').scaleY<.02);
+      for(const [name,state]of visible) {
+        const node=current.art.node('accent-'+name);
+        assert.ok(Math.abs(node.x-state.x)<.002&&Math.abs(node.y-state.y)<.002);
+      }
+    }
+  }finally{current.destroy();}
+});
+
+test('real Rive props share the gaze perspective and eye action clock',()=>{
+  const current=scene(),sim=new EyeSimulation({random:()=>1});
+  sim.follow=false;sim.nextBlink=1000;
+  try {
+    for(const id of ['editing','running','mcp','skill']) {
+      sim.setActivity(id);
+      const positions=[];
+      for(let i=0;i<8*60;i++) {
+        const frame=current.advance(sim,1/60);
+        const yaw=core.getPropViewX(frame.pose.gazeX/40),pitch=core.getPropViewY(frame.pose.gazeY/28);
+        assert.ok(Math.abs(current.art.node('prop-yaw').rotation-yaw.rotation)<.001);
+        assert.ok(Math.abs(current.art.node('prop-pitch').scaleY-pitch.scaleY)<.001);
+        const part={editing:'pencil',running:'terminal-a',mcp:'plug-l',skill:'turn-page'}[id];
+        const node=current.art.node('accent-prop-'+part);
+        if(i>90)positions.push(id==='skill'?node.scaleX:node.x+node.y);
+      }
+      if(id!=='running') assert.ok(Math.max(...positions)-Math.min(...positions)>(id==='skill'?.2:3),id+' acts with object');
+    }
+    sim.setPointer(40,-28,true);sim.follow=true;
+    for(let i=0;i<180;i++)current.advance(sim,1/60);
+    assert.ok(current.art.node('prop-yaw').rotation>.13);
+    assert.ok(current.art.node('prop-pitch').rotation>.04);
   }finally{current.destroy();}
 });

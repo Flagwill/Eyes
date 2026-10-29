@@ -577,6 +577,17 @@ h2 {
   gap:9px;
 }
 
+.activity-heading { margin-top:26px; }
+.activities { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+.activity-group h3 { margin:0 0 8px; color:#95869f; font-size:11px; font-weight:500; }
+.activity-buttons { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.activity-button { width:100%; min-width:0; height:78px; gap:6px; }
+.activity-button .mini-face { width:60px; height:34px; }
+#eyes,.emotion-caption { transition:opacity .6s; }
+.completion-hidden #eyes,.completion-hidden .emotion-caption { opacity:0; }
+@media(max-width:900px) { .activities { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:540px) { .activities { grid-template-columns:1fr; } }
+
 .emotion-button {
   height:91px;
   background:#fdfdfe;

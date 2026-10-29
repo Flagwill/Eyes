@@ -10,7 +10,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 // host's pointer fallback and its 32 ms coalescing, without moving the mouse.
 test('stationary KWin attention survives fallback ticks and reconnects', async (t) => {
   const runtime = mkdtempSync(join(tmpdir(), 'eyes-cursor-test-'));
-  const env = { ...process.env, XDG_RUNTIME_DIR: runtime, QT_QPA_PLATFORM: 'offscreen' };
+  const env = { ...process.env, XDG_RUNTIME_DIR: runtime,
+    QT_QPA_PLATFORM: 'offscreen', EYES_DISABLE_WALLPAPER_GUARD: '1' };
   const host = spawn(resolve('build/eyes-desktop'), ['--hidden'], { env, stdio: 'ignore' });
   let socket;
   t.after(async () => {

@@ -19,6 +19,31 @@ var EyesCore = (function () {
     { id: 'confused', name: '遇到问号', short: '困惑', description: '这里有一点疑惑，想听听你的想法。' },
   ];
 
+  // Activity is intent, emotion is mood. Both use the same continuous rig.
+  var ACTIVITIES = [
+    {id:'listening', base:'idle', group:'理解', name:'竖起耳朵', short:'听任务', description:'收到，我在认真听你说。'},
+    {id:'planning', base:'thinking', group:'理解', name:'排排小计划', short:'做计划', description:'先想清楚，再把每一步排好。'},
+    {id:'reading', base:'focused', group:'理解', name:'逐行读一读', short:'读文件', description:'从这一行看到下一行，线索藏在哪里？'},
+    {id:'searching', base:'curious', group:'理解', name:'探头找线索', short:'找资料', description:'左边看看，右边找找，有发现就带回来。'},
+    {id:'creating', base:'curious', group:'动手', name:'新点子落纸', short:'创建', description:'一张新纸，一个想法，开始创造！'},
+    {id:'editing', base:'focused', group:'动手', name:'埋头改一改', short:'编辑', description:'这里添一笔，那里改一点，再仔细看看。'},
+    {id:'running', base:'focused', group:'动手', name:'盯住小终端', short:'跑命令', description:'命令出发，盯住输出，等它带回消息。'},
+    {id:'mcp', base:'curious', group:'协作', name:'连上线了吗', short:'用 MCP', description:'伸出一条小连接，和远处的工具碰个头。'},
+    {id:'tool', base:'focused', group:'协作', name:'拿出小扳手', short:'调工具', description:'找到合适的工具，认真拧好这一小步。'},
+    {id:'skill', base:'thinking', group:'协作', name:'翻开拿手好戏', short:'用 skill', description:'翻开小手册，这一招我会！'},
+    {id:'testing', base:'focused', group:'检查', name:'一项项打勾', short:'跑测试', description:'检查左边，再检查右边，每一项都算数。'},
+    {id:'debugging', base:'confused', group:'检查', name:'揪出小问题', short:'排错误', description:'唔？凑近一点，看看是哪一环不对劲。'},
+    {id:'reviewing', base:'thinking', group:'检查', name:'回头审一遍', short:'做审查', description:'换个角度再看一遍，让结果更可靠。'},
+    {id:'saving', base:'focused', group:'收尾', name:'稳稳收进盒子', short:'保存', description:'收好这一份成果，轻轻放稳。'},
+    {id:'delegating', base:'curious', group:'协作', name:'分头去看看', short:'分派', description:'这边交给你，那边交给我，回头碰头！'},
+    {id:'waiting', base:'idle', group:'暂停', name:'等你的小点头', short:'等回应', description:'我在听，等你准备好了我们再继续。'},
+    {id:'blocked', base:'confused', group:'暂停', name:'这里卡住啦', short:'遇阻', description:'碰到一个小障碍，需要换条路或请你帮忙。'},
+    {id:'retrying', base:'focused', group:'暂停', name:'打起精神再试', short:'再试试', description:'记住刚才的线索，重新来一次。'},
+    {id:'summarizing', base:'thinking', group:'收尾', name:'把线索串起来', short:'写总结', description:'把做过的事和重要发现，好好讲给你听。'},
+    {id:'complete', base:'happy', group:'收尾', name:'好耶，完成啦', short:'完成', description:'完成啦！这份成果，一起收下。'},
+  ];
+  var EXPRESSIONS = EMOTIONS.concat(ACTIVITIES);
+
   var BASE = {
     lx: -112, ly: 0, lw: 146, lh: 136, lr: 0,
     la: 0, lu: 1.2, ld: -0.6, luc: 3.4, llc: -1.4,
@@ -30,6 +55,7 @@ var EyesCore = (function () {
     lightX: -0.08, lightY: -0.22, lightStrength: 0.16, lightSpread: 0.68,
     lightHeight: 0.56, lightBias: 0, lightBreath: 0.012,
     thinking: 0, happy: 0, curious: 0, focused: 0, surprised: 0, sleepy: 0, confused: 0,
+    propA: 0, propB: 0, propC: 0,
   };
 
   var POSES = {
@@ -105,6 +131,47 @@ var EyesCore = (function () {
       lightSpread: 0.66, lightHeight: 0.54, lightBias: -0.05,
     },
   };
+
+  // Held cues stay readable even when natural motion is disabled.
+  var ACTIVITY_POSES = {
+    listening:{lh:128,rh:140,ly:0,ry:-3,gazeX:0,gazeY:-3,luc:8,ruc:11},
+    planning:{lh:76,rh:96,ly:13,ry:7,gazeX:-16,gazeY:-14,lu:3,ru:-1},
+    reading:{lw:148,rw:148,lh:82,rh:80,ly:18,ry:19,lu:2,ru:-2,luc:-8,ruc:-8,llc:6,rlc:6,gazeX:-10,gazeY:16},
+    searching:{lh:120,rh:145,ly:1,ry:-2,gazeX:10,gazeY:2,tilt:-.008},
+    creating:{lh:108,rh:120,ly:-5,ry:-9,la:10,ra:10,luc:5,ruc:7,gazeX:7,gazeY:12,tilt:.006},
+    editing:{lh:60,rh:76,ly:21,ry:16,lu:6,ru:-5,luc:-8,ruc:-6,llc:4,rlc:4,gazeX:10,gazeY:17},
+    running:{lh:72,rh:78,ly:15,ry:13,lu:7,ru:-7,gazeX:0,gazeY:15,lx:-110,rx:110},
+    mcp:{lh:104,rh:132,ly:5,ry:-4,lu:2,ru:-1,gazeX:-8,gazeY:12,tilt:.01},
+    tool:{lh:78,rh:70,ly:13,ry:17,lx:-106,rx:106,gazeX:5,gazeY:7},
+    skill:{lh:88,rh:112,ly:9,ry:0,lu:3,ru:-3,luc:2,ruc:6,gazeX:-5,gazeY:15},
+    testing:{lh:86,rh:86,ly:11,ry:11,lu:5,ru:-5,luc:-3,ruc:-3,gazeX:-8,gazeY:5},
+    debugging:{lh:96,rh:54,ly:2,ry:24,lu:-5,ru:-8,luc:6,ruc:-6,gazeX:13,gazeY:4,tilt:-.012},
+    reviewing:{lh:90,rh:76,ly:8,ry:15,lu:-2,ru:3,luc:-6,ruc:-7,llc:3,rlc:-4,gazeX:-13,gazeY:4},
+    saving:{lh:58,rh:58,ly:23,ry:23,lu:3,ru:-3,luc:-8,ruc:-8,llc:3,rlc:3,gazeX:0,gazeY:13,lx:-104,rx:104},
+    delegating:{lh:126,rh:110,ly:-4,ry:3,lu:-1,ru:-3,gazeX:-19,gazeY:-6,tilt:-.009},
+    waiting:{lh:108,rh:112,ly:7,ry:5,luc:7,ruc:8,gazeX:0,gazeY:-2,lightStrength:.12},
+    blocked:{lh:98,rh:72,ly:3,ry:17,lu:-10,ru:8,luc:3,ruc:-3,gazeX:0,gazeY:2,tilt:-.008},
+    retrying:{lh:94,rh:88,ly:8,ry:11,lu:7,ru:-7,luc:0,ruc:0,gazeX:-9,gazeY:-3},
+    summarizing:{lh:96,rh:94,ly:7,ry:8,lu:1,ru:-1,luc:7,ruc:7,llc:-4,rlc:-4,gazeX:0,gazeY:7},
+    complete:{},
+  };
+  for (var activity of ACTIVITIES) {
+    BASE['activity' + activity.id] = 0;
+    var activityPose = clone(POSES[activity.base]);
+    // Props identify intent; keep the inherited emotion's extra symbols quiet.
+    for (var mood of EMOTIONS) if (mood.id !== 'idle') activityPose[mood.id] = 0;
+    if (activity.id === 'complete') activityPose.happy = 1;
+    if (activity.id === 'tool' || activity.id === 'editing') activityPose.focused = .5;
+    for (var parameter in ACTIVITY_POSES[activity.id])
+      activityPose[parameter] = ACTIVITY_POSES[activity.id][parameter];
+    activityPose['activity' + activity.id] = 1;
+    POSES[activity.id] = activityPose;
+  }
+
+  function getActivity(id) {
+    for (var activity of ACTIVITIES) if (activity.id === id) return activity;
+    throw new RangeError('Unknown activity: ' + id);
+  }
 
   function clone(object) {
     var result = {};
@@ -324,10 +391,17 @@ var EyesCore = (function () {
   function motionPose() {
     return {lift: 0, open: 0, asymmetry: 0, tilt: 0, bend: 0,
       upperBend: 0, lowerBend: 0, leftTension: 0, rightTension: 0,
-      leftLift: 0, rightLift: 0, leftSlope: 0, rightSlope: 0, spacing: 0};
+      leftLift: 0, rightLift: 0, leftSlope: 0, rightSlope: 0, spacing: 0,
+      propA: 0, propB: 0, propC: 0};
   }
 
+  var ACTIVITY_SCORES;
+
   function entryEnvelope(emotion, age) {
+    if (ACTIVITY_SCORES[emotion]) {
+      var entry = ACTIVITY_SCORES[emotion].entryTiming || [.28,.22,.95];
+      return beat(age,0,entry[0],entry[1],entry[2]);
+    }
     var timing = {idle: [0.4, 0.2, 0.9], happy: [0.18, 0.18, 0.9],
       curious: [0.26, 0.24, 1.05], thinking: [0.4, 0.25, 1.0],
       focused: [0.34, 0.18, 0.8], surprised: [0.12, 0.16, 0.85],
@@ -337,7 +411,7 @@ var EyesCore = (function () {
 
   function entryMotion(emotion) {
     var result = motionPose();
-    var cues = {
+    var cues = ACTIVITY_SCORES[emotion] ? ACTIVITY_SCORES[emotion].entry : {
       idle: {open: 0.04, lift: -1, upperBend: 0.7},
       happy: {bend: 9, lift: -7, leftLift: -0.6, rightLift: -1.5, spacing: -2},
       curious: {open: 0.025, asymmetry: 0.035, rightTension: 2.5,
@@ -404,8 +478,68 @@ var EyesCore = (function () {
         leftLift:1.5, rightLift:-2, leftSlope:1.8, rightSlope:4, tilt:.008}],
   };
 
+  // Three readable beats: intention, partner response, resolution. Gaze and
+  // props follow these same poses, with held gaps instead of perpetual bobbing.
+  ACTIVITY_SCORES = {
+    listening:{entry:{open:.07,lift:-2}, gestures:[{rightLift:-2,rightTension:1.6},
+      {leftLift:-1.5,open:.025},{lift:1,open:-.025}], gaze:[[2,-2],[-2,0],[0,1]], duration:12.8},
+    planning:{entry:{open:-.06,leftTension:-1.5}, gestures:[{leftSlope:3,leftLift:1,open:-.06},
+      {rightLift:-3,rightTension:2},{open:.045,lift:-1}], gaze:[[-5,-2],[6,0],[1,2]], duration:13.6},
+    reading:{entry:{lift:1,open:-.04}, gestures:[{leftSlope:1,rightSlope:1},
+      {rightLift:-1,open:.025},{lift:1,open:-.035}], gaze:[[15,0],[24,1],[-5,3]],
+      timing:[[.8,.55,.75,.55],[2.9,.6,.65,.6],[5.1,.4,.5,.65]],duration:8.5},
+    searching:{entry:{rightLift:-3,asymmetry:.04}, gestures:[{leftLift:-3,asymmetry:-.06,tilt:-.008},
+      {rightLift:-3,asymmetry:.05,tilt:.009},{open:-.06,upperBend:-1}], gaze:[[-7,1],[25,-1],[8,4]],duration:10.4},
+    creating:{entry:{lift:-4,open:.08,spacing:1}, gestures:[{rightLift:-3,upperBend:2,open:.05},
+      {leftLift:-2,upperBend:1},{lift:-2,bend:3,spacing:-1}], gaze:[[5,3],[0,5],[-3,-2]],duration:10.8},
+    editing:{entry:{open:-.055,lift:1}, gestures:[{leftLift:1,rightTension:-.8},
+      {rightLift:1,leftSlope:1.5},{open:.065,rightLift:-2}], gaze:[[8,3],[-6,5],[0,-11]],
+      timing:[[.7,.3,.4,.5],[1.8,.3,.45,.55],[4,.4,.65,.8]],duration:7.6},
+    running:{entry:{open:-.07,spacing:-1}, gestures:[{open:-.035,rightTension:-.8},
+      {rightLift:-2,open:.06},{lift:1,open:-.02}], gaze:[[-2,2],[4,-2],[-5,3]],duration:10.5},
+    mcp:{entry:{rightLift:-4,asymmetry:.06,spacing:1.5}, gestures:[{rightLift:-3,rightTension:2,spacing:1},
+      {leftLift:-3,leftTension:1.7},{spacing:-1.5,open:-.045}], gaze:[[-7,0],[17,0],[8,-4]],
+      timing:[[1,.4,.6,.9],[1.3,.45,.65,1],[4.7,.55,.6,1]],duration:10.9},
+    tool:{entry:{open:-.065,spacing:-1.5}, gestures:[{leftLift:1,rightLift:-1,leftSlope:2},
+      {leftLift:-1,rightLift:1,rightSlope:-2},{lift:1.5,open:.035}], gaze:[[-3,1],[3,1],[0,-3]],duration:9.6},
+    skill:{entry:{open:.09,rightLift:-2}, gestures:[{open:.06,rightTension:2},
+      {leftLift:-2,upperBend:1},{open:-.045,lift:1}], gaze:[[-6,2],[10,0],[5,-10]],duration:12.1},
+    testing:{entry:{open:-.035,lift:-1}, gestures:[{leftLift:-2,leftTension:1},
+      {rightLift:-2,rightTension:1},{lift:2,open:-.04}], gaze:[[-6,0],[16,0],[0,3]],
+      timing:[[1,.35,.55,.75],[2.8,.35,.55,.75],[4.8,.35,.35,.8]],duration:9.2},
+    debugging:{entry:{asymmetry:-.045,leftSlope:-2}, gestures:[{open:-.065,rightTension:-2},
+      {leftLift:-2,leftTension:1.5},{rightLift:-3,open:.08,tilt:.006}], gaze:[[-6,1],[3,-2],[-7,-4]],duration:11.4},
+    reviewing:{entry:{open:-.04,leftSlope:-2}, gestures:[{leftLift:-1,asymmetry:-.035},
+      {rightLift:-2,asymmetry:.04},{lift:1.8,open:.03}], gaze:[[-5,0],[24,1],[8,3]],duration:12.5},
+    saving:{entry:{spacing:-2,open:-.04}, gestures:[{lift:2.5,open:-.07},
+      {leftLift:1,rightLift:1},{open:.06,lift:-2,spacing:1}], gaze:[[0,3],[1,1],[0,-4]],duration:11.5},
+    delegating:{entry:{leftLift:-3,open:.04,spacing:2}, gestures:[{leftLift:-2,leftTension:1.5,tilt:-.008},
+      {rightLift:-3,rightTension:2,tilt:.008},{spacing:-1,open:-.035}], gaze:[[-6,0],[34,1],[16,3]],duration:12.2},
+    waiting:{entry:{open:.025,lift:-1}, gestures:[{rightLift:-1.2,open:.02},
+      {leftLift:-1},{open:-.025,lift:1}], gaze:[[1,-1],[-1,0],[0,0]],
+      timing:[[3,.8,.7,1.4],[9,.8,.6,1.5],[14,1,.5,1.5]],duration:19.5},
+    blocked:{entry:{leftTension:1,rightTension:-1,tilt:-.006}, gestures:[{asymmetry:-.035,leftSlope:-2},
+      {rightTension:-1,open:-.025},{leftLift:-1.5,rightLift:-1}], gaze:[[-3,0],[3,0],[0,-3]],duration:15.2},
+    retrying:{entry:{open:-.1,lift:2}, gestures:[{leftLift:1,rightLift:1,open:-.045},
+      {open:.08,lift:-3,spacing:1},{open:-.02,upperBend:-.5}], gaze:[[-7,1],[14,-3],[7,1]],duration:11.2},
+    summarizing:{entry:{open:.045,lift:-1}, gestures:[{leftLift:-1,leftSlope:1},
+      {rightLift:-1,rightSlope:-1},{spacing:-1.5,lift:1.5}], gaze:[[-9,0],[9,0],[0,-3]],duration:11.8},
+    complete:{entry:{bend:9,lift:-7,spacing:-2},gestures:GESTURES.happy,
+      gaze:[[0,-1],[2,0],[0,0]],duration:13.4,entryTiming:[.18,.18,.9]},
+  };
+  for (var activity of ACTIVITIES) {
+    var score = ACTIVITY_SCORES[activity.id];
+    score.gestures = score.gestures.map(clone);
+    for (var i=0;i<3;i++) score.gestures[i]['prop' + ['A','B','C'][i]] = 1;
+    GESTURES[activity.id] = score.gestures;
+    score.entry.propC = -.5;
+  }
+
   function getActingCues(emotion, time) {
     var t = time % getPerformanceDuration(emotion);
+    var score = ACTIVITY_SCORES[emotion];
+    if (score) return (score.timing || [[1.1,.4,.65,.95],[3.4,.45,.6,1.1],[6.6,.5,.55,1.2]])
+      .map(function(cue) { return beat(t,cue[0],cue[1],cue[2],cue[3]); });
     if (emotion === 'idle') return [beat(t,2.8,.6,.8,1.4),
       beat(t,8.2,1.1,.6,1.7),beat(t,13.8,.47,.4,.9)];
     if (emotion === 'happy') return [beat(t,.9,.38,.65,1.2),
@@ -434,6 +568,7 @@ var EyesCore = (function () {
   }
 
   function getPerformanceDuration(emotion) {
+    if (ACTIVITY_SCORES[emotion]) return ACTIVITY_SCORES[emotion].duration;
     return {idle: 17.3, happy: 13.4, curious: 11.8, thinking: 14.2,
       focused: 18.7, surprised: 16.1, sleepy: 15.6, confused: 12.8}[emotion];
   }
@@ -457,6 +592,9 @@ var EyesCore = (function () {
     pose.lx -= motion.spacing * weight;
     pose.rx += motion.spacing * weight;
     pose.tilt += motion.tilt * weight;
+    pose.propA += motion.propA * weight;
+    pose.propB += motion.propB * weight;
+    pose.propC += motion.propC * weight;
     return pose;
   }
 
@@ -485,6 +623,11 @@ var EyesCore = (function () {
   // takes priority, so these phrases never fight a real user's cursor.
   function getAmbientGaze(emotion, time) {
     var cues = getActingCues(emotion,time), a=cues[0], b=cues[1], c=cues[2];
+    if (ACTIVITY_SCORES[emotion]) {
+      var targets=ACTIVITY_SCORES[emotion].gaze, gaze={x:0,y:0};
+      for (var i=0;i<3;i++) { gaze.x+=targets[i][0]*cues[i]; gaze.y+=targets[i][1]*cues[i]; }
+      return gaze;
+    }
     if (emotion === 'idle') {
       var check=beat(time%16,6,.28,1.07,.36);
       return check ? {x:check*3.5,y:-check} : {x:0,y:0};
@@ -548,7 +691,7 @@ var EyesCore = (function () {
     this.entryWeights = {};
     this.actionWeights = {};
     this.performanceStarts = {};
-    for (var emotion of EMOTIONS) {
+    for (var emotion of EXPRESSIONS) {
       this.expressionWeights[emotion.id] = new Spring(emotion.id === 'idle' ? 1 : 0, 150, 25);
       this.entryWeights[emotion.id] = new Spring(0, 220, 29);
       this.actionWeights[emotion.id] = [new Spring(0,150,25),new Spring(0,150,25),new Spring(0,150,25)];
@@ -609,6 +752,11 @@ var EyesCore = (function () {
     this.fixationAt = this.flowTime;
     this.attentionAt = this.elapsed;
     this.bounce = this.reducedMotion ? 0 : 1;
+  };
+
+  EyeSimulation.prototype.setActivity = function (id) {
+    getActivity(id);
+    this.setEmotion(id);
   };
 
   EyeSimulation.prototype.blink = function (doubleBlink) {
@@ -737,25 +885,28 @@ var EyesCore = (function () {
     var motionWeight = Math.max(0, Math.min(1,
       this.performanceMotion.step(alive ? energy : 0, dt)));
     var rawWeights = [], weightSum = 0;
-    for (var item of EMOTIONS) {
+    for (var item of EXPRESSIONS) {
       var expressionSpring = this.expressionWeights[item.id];
       expressionSpring.stiffness = this.emotion === 'surprised' ? 220 : this.emotion === 'sleepy' ? 95 : 150;
       expressionSpring.damping = this.emotion === 'surprised' ? 29 : this.emotion === 'sleepy' ? 21 : 25;
       var weight = Math.max(0, expressionSpring.step(
         item.id === this.emotion ? 1 : 0, dt));
+      if (weight < 0.0000001) weight = 0;
       rawWeights.push(weight);
       weightSum += weight;
     }
     var riveInputs = {}, accumulated = 0;
-    for (var e = 0; e < EMOTIONS.length; ++e) {
-      var emotionId = EMOTIONS[e].id;
+    for (var e = 0; e < EXPRESSIONS.length; ++e) {
+      var emotionId = EXPRESSIONS[e].id;
       var entering = Math.max(0, Math.min(1, this.entryWeights[emotionId].step(
         alive && emotionId === this.emotion ? entryEnvelope(emotionId, t - this.emotionAt) * energy : 0, dt)));
+      if (entering < 0.0000001) entering = 0;
       var cues = getActingCues(emotionId, naturalTime-this.performanceStarts[emotionId]);
       var gestures=[], gestureSum=0;
       for (var gesture=0; gesture<3; gesture++) {
         var amount=Math.max(0,Math.min(1,this.actionWeights[emotionId][gesture].step(
           alive && emotionId===this.emotion ? cues[gesture] : 0,dt))) * motionWeight / 2;
+        if (amount < 0.0000001) amount = 0;
         gestures.push(amount); gestureSum+=amount;
       }
       if (gestureSum>1) {
@@ -782,6 +933,11 @@ var EyesCore = (function () {
     riveInputs.looky = Math.max(-1, Math.min(1, (values.gazeY - this.target.gazeY) / 28));
     riveInputs.lightx = Math.max(-1, Math.min(1, (values.lightGazeX - this.target.gazeX) / 40));
     riveInputs.lighty = Math.max(-1, Math.min(1, (values.lightGazeY - this.target.gazeY) / 28));
+    riveInputs.propbase = 100;
+    riveInputs.propleft = Math.max(0, Math.min(1, -values.gazeX / 40)) * 100;
+    riveInputs.propright = Math.max(0, Math.min(1, values.gazeX / 40)) * 100;
+    riveInputs.propup = Math.max(0, Math.min(1, -values.gazeY / 28)) * 100;
+    riveInputs.propdown = Math.max(0, Math.min(1, values.gazeY / 28)) * 100;
     this.lastFrame = {
       pose: values,
       riveInputs: riveInputs,
@@ -839,11 +995,11 @@ var EyesCore = (function () {
 
   // Font-free filled vector paths are shared by Canvas and the Rive authoring
   // tool. Accessories inherit the face transform, but never the blink squash.
-  // Broad inner head, a shallow outer arch, and a tapered tail. Mirror the
-  // same contour so both brows retain their anatomy during expression blends.
-  var BROW_LEFT = [['M',50,-6],['C',28,-9,1,-15,-20,-13],
-    ['C',-33,-12,-44,-3,-50,3],['C',-39,1,-31,-1,-21,1],
-    ['C',-2,0,23,10,47,12],['L',50,7],['Z']];
+  // Rectangular brow bar: a thick inner head and squared outer tail, with one
+  // restrained angular cut echoing the reference's crisp geometric language.
+  var BROW_LEFT = [['M',50,-7],['L',45,-9],['L',-45,-3],
+    ['L',-50,-1.2],['L',-50,1.8],['L',-45,2.4],
+    ['L',45,8.4],['L',50,9],['Z']];
   var BROW_RIGHT = BROW_LEFT.map(function(command) {
     return command.map(function(value,index) { return index%2===1 ? -value : value; });
   });
@@ -857,29 +1013,12 @@ var EyesCore = (function () {
     ['C',-2.7,15.8,-2.7,10.2,1,10.2],['Z']];
   var Z_PATH = [['M',-6,-9],['L',6,-9],['L',6,-6],['L',-2,6],
     ['L',6,6],['L',6,9],['L',-6,9],['L',-6,6],['L',2,-6],['L',-6,-6],['Z']];
-  function lensRim(x) {
-    // A single closed ribbon, split at the outer top-left corner, avoids
-    // backend-dependent hole winding and leaves the lens fully transparent.
-    return [['M',x-75,-58],['L',x+75,-58],['C',x+85,-58,x+89,-54,x+89,-44],
-      ['L',x+89,44],['C',x+89,54,x+85,58,x+75,58],['L',x-75,58],
-      ['C',x-85,58,x-89,54,x-89,44],['L',x-89,-44],
-      ['C',x-89,-54,x-85,-58,x-75,-58],['L',x-75,-54.4],
-      ['C',x-82.5,-54.4,x-85.4,-51.5,x-85.4,-44],['L',x-85.4,44],
-      ['C',x-85.4,51.5,x-82.5,54.4,x-75,54.4],['L',x+75,54.4],
-      ['C',x+82.5,54.4,x+85.4,51.5,x+85.4,44],['L',x+85.4,-44],
-      ['C',x+85.4,-51.5,x+82.5,-54.4,x+75,-54.4],['L',x-75,-54.4],['Z']];
-  }
   var ACCENT_DESIGNS = [
-    {id:'brow-l', color:'#8e52d5', paths:[BROW_LEFT]},
-    {id:'brow-r', color:'#8e52d5', paths:[BROW_RIGHT]},
+    {id:'brow-l', color:'#bca3d8', paths:[BROW_LEFT]},
+    {id:'brow-r', color:'#bca3d8', paths:[BROW_RIGHT]},
     {id:'question', paths:[QUESTION_HOOK,QUESTION_DOT]},
     {id:'star-main', paths:[STAR_PATH]},
     {id:'star-small', paths:[STAR_PATH]},
-    {id:'glasses', paths:[lensRim(-112),lensRim(112),
-      [['M',-23,-7],['C',-12,-16,12,-16,23,-7],['L',23,-2.8],
-        ['C',12,-12,-12,-12,-23,-2.8],['Z']],
-      [['M',-201,-27],['L',-214,-32],['L',-215,-28.4],['L',-201,-23.4],['Z']],
-      [['M',201,-27],['L',214,-32],['L',215,-28.4],['L',201,-23.4],['Z']]]},
     {id:'alert-l', paths:[[['M',-2,-13],['L',1,-16],['L',12,-5],['L',9,-2],['Z']],
       [['M',-9,6],['L',-8,2],['L',6,6],['L',5,10],['Z']]]},
     {id:'alert-r', paths:[[['M',2,-13],['L',-1,-16],['L',-12,-5],['L',-9,-2],['Z']],
@@ -887,6 +1026,87 @@ var EyesCore = (function () {
     {id:'sleep-z', paths:[Z_PATH]},
     {id:'sleep-z-small', paths:[Z_PATH]},
   ];
+
+  function polygon(points) {
+    return points.map(function(p,i) { return [i ? 'L' : 'M',p[0],p[1]]; }).concat([['Z']]);
+  }
+  function bar(x,y,w,h) { return polygon([[x,y],[x+w,y],[x+w,y+h],[x,y+h]]); }
+  var PAGE = [polygon([[-15,-20],[6,-20],[15,-11],[15,20],[-15,20],[-15,-20],
+    [-12,-17],[-12,17],[12,17],[12,-10],[5,-17],[-12,-17]]),
+    polygon([[5,-20],[8,-17],[8,-12],[13,-12],[15,-9],[5,-9]])];
+  var LINES = [bar(-8,-6,16,2.5),bar(-8,1,16,2.5),bar(-8,8,10,2.5)];
+  var CHECK = polygon([[-9,0],[-6,-3],[-1,2],[8,-8],[11,-5],[-1,8]]);
+  var MAGNIFIER = [polygon([[-12,-16],[2,-16],[8,-10],[8,3],[2,9],[-12,9],[-18,3],[-18,-10],[-12,-16],
+    [-11,-12],[-14,-8],[-14,1],[-10,5],[0,5],[4,1],[4,-8],[0,-12],[-11,-12]]),
+    polygon([[5,5],[9,4],[20,17],[16,21]])];
+  var PAGE_BODY = [polygon([[-15,-20],[6,-20],[15,-11],[15,20],[-15,20]])];
+  var PROP_DESIGNS = [
+    {id:'steps', paths:[bar(-16,9,9,4),bar(-4,1,9,4),bar(8,-7,9,4)]},
+    {id:'page', paths:PAGE.concat(LINES), body:PAGE_BODY},
+    {id:'search', paths:MAGNIFIER},
+    {id:'new-page', paths:PAGE.concat([bar(-8,-1,16,3),bar(-1.5,-7.5,3,16)]),body:PAGE_BODY},
+    {id:'writing-page', paths:PAGE,body:PAGE_BODY},
+    {id:'ink-a', paths:[bar(-8,-1,15,2.3)]},
+    {id:'ink-b', paths:[bar(-8,6,11,2.3)]},
+    {id:'pencil', paths:[polygon([[-2,11],[0,3],[17,-16],[22,-11],[5,8]]),
+      polygon([[18,-18],[21,-21],[26,-16],[23,-13]])]},
+    {id:'terminal', paths:[bar(-23,-17,46,3),bar(-23,-14,3,31),bar(20,-14,3,31),bar(-23,14,46,3),
+      bar(-23,-9,46,2),bar(-17,-13,2,2),bar(-12,-13,2,2),
+      polygon([[-14,-4],[-5,2],[-14,9],[-16,6],[-10,2],[-16,-1]])],
+      body:[bar(-22,-16,44,32)]},
+    {id:'terminal-a',paths:[bar(-1,-3,15,2)]},
+    {id:'terminal-b',paths:[bar(-1,4,10,2)]},
+    {id:'link', paths:[polygon([[-22,-2],[0,-2],[0,4],[22,4],[22,7],[-3,7],[-3,1],[-22,1]])]},
+    {id:'plug-l',paths:[bar(-6,-8,12,16),bar(6,-4,5,3),bar(6,2,5,3)],body:[bar(-6,-8,12,16)]},
+    {id:'plug-r',paths:[bar(-6,-8,12,16),bar(-11,-4,5,3),bar(-11,2,5,3)],body:[bar(-6,-8,12,16)]},
+    {id:'wrench', paths:[polygon([[4,-19],[13,-20],[10,-12],[14,-8],[22,-10],[21,-1],[13,4],
+      [7,2],[-9,20],[-17,12],[1,-4],[-1,-10]])]},
+    {id:'handbook', paths:[polygon([[-22,-15],[-4,-12],[0,-8],[4,-12],[22,-15],[22,16],[4,19],[0,16],
+      [-4,19],[-22,16],[-22,-15],[-19,-11],[-19,13],[-4,16],[-2,14],[-2,-7],[-5,-9],[-19,-11]]),
+      polygon([[2,-7],[5,-9],[19,-11],[19,13],[4,16],[2,14]]),bar(-15,-3,8,2),bar(-15,3,8,2)],
+      body:[polygon([[-22,-15],[0,-8],[22,-15],[22,16],[0,20],[-22,16]])]},
+    {id:'turn-page',paths:[polygon([[0,-8],[17,-12],[17,13],[0,17]])],body:[polygon([[0,-8],[17,-12],[17,13],[0,17]])]},
+    {id:'check', paths:[bar(-17,-17,34,3),bar(-17,-14,3,31),bar(14,-14,3,31),bar(-17,14,34,3)],body:[bar(-16,-16,32,32)]},
+    {id:'tick', paths:[CHECK]},
+    {id:'inspect', paths:MAGNIFIER.concat([bar(-6,-8,3,9),bar(-6,3,3,3)])},
+    {id:'review', paths:PAGE.concat([CHECK]),body:PAGE_BODY},
+    {id:'save', paths:[polygon([[-21,4],[-17,4],[-17,15],[17,15],[17,4],[21,4],[21,19],[-21,19]])]},
+    {id:'save-arrow',paths:[polygon([[-2,-18],[2,-18],[2,0],[9,-6],[12,-3],[0,9],[-12,-3],[-9,-6],[-2,0]])]},
+    {id:'branch', paths:[bar(-4,-19,8,8),bar(-21,11,8,8),bar(13,11,8,8),bar(-1.5,-11,3,9),
+      bar(-18.5,-2,37,3),bar(-18.5,1,3,10),bar(15.5,1,3,10)]},
+    {id:'pause', paths:[bar(-11,-13,7,26),bar(4,-13,7,26)]},
+    {id:'blocked', paths:[polygon([[0,-21],[22,17],[-22,17],[0,-21],
+      [0,-14],[-16,14],[16,14],[0,-14]]),bar(-1.5,-5,3,10),bar(-1.5,8,3,3)]},
+    {id:'retry', paths:[polygon([[16,-3],[12,-12],[-8,-12],[-13,-6],[-13,7],[-6,13],[10,13],[10,17],
+      [-8,17],[-17,9],[-17,-8],[-10,-16],[14,-16],[20,-5],[24,-9],[24,3],[12,3]])]},
+    {id:'summary', paths:PAGE.concat([bar(-8,-7,16,3),bar(-8,0,12,3),bar(-8,7,8,3)]),body:PAGE_BODY},
+  ];
+  ACCENT_DESIGNS = ACCENT_DESIGNS.concat(PROP_DESIGNS.map(function(design) {
+    return {id:'prop-'+design.id,color:'#cfb5e8',paths:design.paths,body:design.body,
+      prop:true,depth:design.id.indexOf('ink-')===0 || /terminal-[ab]|tick/.test(design.id) ? 0 : 3.2};
+  }));
+  var ACTIVITY_PROPS = {planning:'steps',reading:'page',searching:'search',creating:'new-page',
+    editing:'pencil',running:'terminal',mcp:'link',tool:'wrench',skill:'handbook',testing:'check',
+    debugging:'inspect',reviewing:'review',saving:'save',delegating:'branch',waiting:'pause',
+    blocked:'blocked',retrying:'retry',summarizing:'summary'};
+  var PROP_LAYOUTS = {
+    page:[0,104,1.35,-.06],search:[118,36,1.35,-.18],
+    'new-page':[82,99,1.3,.08],pencil:[105,87,1.15,-.12],
+    terminal:[0,104,1.5,-.025],link:[0,103,1.3,0],wrench:[78,92,1.3,-.12],
+    handbook:[0,103,1.4,-.03],check:[0,103,1.3,.04],inspect:[116,38,1.4,-.15],
+    review:[0,105,1.35,-.04],save:[0,105,1.4,0],branch:[0,102,1.35,0],
+    pause:[0,105,1.1,0],blocked:[0,102,1.15,-.04],retry:[0,103,1.3,-.04],
+    summary:[0,104,1.35,-.04],steps:[0,105,1.3,0]
+  };
+
+  function getPropViewX(value) {
+    value=Math.max(-1,Math.min(1,value));
+    return {x:-value*2,y:0,rotation:value*.14,scaleX:1-Math.abs(value)*.12,scaleY:1};
+  }
+  function getPropViewY(value) {
+    value=Math.max(-1,Math.min(1,value));
+    return {x:0,y:value*3,rotation:-value*.05,scaleX:1,scaleY:1-Math.abs(value)*.12};
+  }
 
   function getAccentStates(pose) {
     var states = {};
@@ -896,13 +1116,13 @@ var EyesCore = (function () {
         rotation:rotation || 0};
     }
     var happy=pose.happy, curious=pose.curious, confused=pose.confused;
-    var focused=pose.focused, thinking=pose.thinking, surprised=pose.surprised;
+    var focused=pose.focused, surprised=pose.surprised;
     for (var side of ['l','r']) {
       var eye=getEyeGeometry(pose,side,0,0);
-      var span=1.14;
+      var span=1.08;
       var start=Rig.edges(eye,-.85).upper;
       var end=Rig.edges(eye,.85).upper;
-      var rotation=Math.max(-.12,Math.min(.12,Math.atan2(end-start,eye.width*.85)));
+      var rotation=Math.max(-.16,Math.min(.16,Math.atan2(end-start,eye.width*.85)));
       // Follow the lid direction and reserve a clear gap below the entire
       // brow, including the wider ends and asymmetric acting poses.
       var ceiling=Infinity;
@@ -912,7 +1132,7 @@ var EyesCore = (function () {
         ceiling=Math.min(ceiling,Rig.edges(eye,u).upper-x*Math.sin(rotation));
       }
       put('brow-'+side,pose[side+'x'],
-        pose[side+'y']+ceiling-22,focused*.76+confused*.72,
+        pose[side+'y']+ceiling-22,focused*.78+confused*.72,
         eye.width*span/100,1,rotation);
     }
     put('question',214,-100+confused*27,curious*.66+confused*.8,
@@ -922,16 +1142,64 @@ var EyesCore = (function () {
     var joyLift=Math.max(-8,Math.min(8,((pose.ly+pose.ry)/2+6)*.55));
     put('star-main',211,-65+joyLift,happy*.78,1,1);
     put('star-small',-210,-34+joyLift*.6,happy*.58,.62,.62);
-    put('glasses',0,(pose.ly+pose.ry)/2,thinking*.78,1,1);
     put('alert-l',-217,-94,surprised*.7);
     put('alert-r',217,-94,surprised*.7);
     put('sleep-z',207,-27,pose.sleepy*.65,1,1);
     put('sleep-z-small',229,-52,pose.sleepy*.44,.65,.65);
+    var a=pose.propA, b=pose.propB, c=pose.propC;
+    for (var design of PROP_DESIGNS) put('prop-'+design.id,0,104,0);
+    function prop(name,weight,x,y,scale,rotation,alpha,sx) {
+      put('prop-'+name,x,y,weight*(alpha===undefined?.8:alpha),
+        scale*(sx===undefined?1:sx),scale,rotation);
+    }
+    for (var activity of ACTIVITIES) {
+      var weight=pose['activity'+activity.id] || 0, name=ACTIVITY_PROPS[activity.id];
+      if (!name) continue;
+      var layout=PROP_LAYOUTS[name], x=layout[0],y=layout[1],scale=layout[2],angle=layout[3];
+      // These are operations on an object: inspect, write, connect and put away.
+      // Their cues are the eye gestures themselves, never a second timeline.
+      if (name==='search'||name==='inspect') { x-=a*5; y-=a*12-b*3; angle+=a*.12-b*.09; }
+      else if (name==='pencil') { x+=a*12-b*9; y+=a*3+b*7-c*9; angle+=a*.2-b*.15; }
+      else if (name==='new-page') { y-=a*7+c*3; angle-=a*.1; }
+      else if (name==='wrench') { angle+=a*.22-b*.18; y+=a*2-b*2; }
+      else if (name==='handbook') { angle+=a*.05-b*.04; }
+      else if (name==='save') { y+=a*3; }
+      else { y+=(a+b)*1.5-c*2; angle+=a*.025-b*.025; }
+      prop(name,weight,x,y,scale,angle);
+      if (activity.id==='editing') {
+        prop('writing-page',weight,96,105,1.35,.03);
+        prop('ink-a',weight,96,105,1.35,.03,.18+a*.65);
+        prop('ink-b',weight,96,105,1.35,.03,.16+b*.65);
+      } else if (activity.id==='running') {
+        prop('terminal-a',weight,x,y,scale,angle,.22+a*.6);
+        prop('terminal-b',weight,x,y,scale,angle,.18+b*.65);
+      } else if (activity.id==='mcp') {
+        prop('plug-l',weight,-34+a*13,100,1.3,-.06+a*.06);
+        prop('plug-r',weight,34-b*13,106,1.3,.06-b*.06);
+        states['prop-link'].opacity*=.38+(a+b)*.42;
+      } else if (activity.id==='skill') {
+        prop('turn-page',weight,0,103,1.4,-.03+a*.08,.55,1-a*.7+b*.12);
+      } else if (activity.id==='testing') {
+        prop('tick',weight,x,y+2-c*2,scale,angle,.24+(a+b+c)*.35);
+      } else if (activity.id==='saving') {
+        prop('save-arrow',weight,0,94+a*11+b*3,1.3,0,.7-c*.3);
+      }
+    }
     return states;
   }
 
   function drawAccents(ctx, pose) {
     var states=getAccentStates(pose);
+    function trace(paths) {
+      ctx.beginPath();
+      for (var path of paths) for (var command of path) {
+        if(command[0]==='M')ctx.moveTo(command[1],command[2]);
+        else if(command[0]==='L')ctx.lineTo(command[1],command[2]);
+        else if(command[0]==='C')ctx.bezierCurveTo(command[1],command[2],command[3],command[4],command[5],command[6]);
+        else ctx.closePath();
+      }
+      ctx.fill();
+    }
     ctx.save();
     for (var design of ACCENT_DESIGNS) {
       var state=states[design.id];
@@ -939,17 +1207,30 @@ var EyesCore = (function () {
       ctx.save();
       ctx.fillStyle=design.color || '#b08add';
       ctx.globalAlpha*=state.opacity;
+      if (design.prop) {
+        for (var view of [getPropViewY(pose.gazeY/28),getPropViewX(pose.gazeX/40)]) {
+          ctx.translate(view.x,view.y);ctx.rotate(view.rotation);ctx.scale(view.scaleX,view.scaleY);
+        }
+      }
       ctx.translate(state.x,state.y);
       ctx.rotate(state.rotation);
       ctx.scale(state.scaleX,state.scaleY);
-      ctx.beginPath();
-      for (var path of design.paths) for (var command of path) {
-        if(command[0]==='M')ctx.moveTo(command[1],command[2]);
-        else if(command[0]==='L')ctx.lineTo(command[1],command[2]);
-        else if(command[0]==='C')ctx.bezierCurveTo(command[1],command[2],command[3],command[4],command[5],command[6]);
-        else ctx.closePath();
+      if (design.depth) {
+        ctx.save();ctx.translate(design.depth,design.depth*1.25);
+        ctx.fillStyle='#654781';trace(design.body || design.paths);ctx.restore();
       }
-      ctx.fill();
+      if (design.body) {
+        ctx.save();ctx.globalAlpha*=.6;
+        var surface=ctx.createLinearGradient(-24,-24,24,24);
+        surface.addColorStop(0,'#b18bd2');surface.addColorStop(1,'#825ca9');
+        ctx.fillStyle=surface;trace(design.body);ctx.restore();
+      }
+      if (design.prop) {
+        var bevel=ctx.createLinearGradient(0,-22,0,22);
+        bevel.addColorStop(0,'#dfc8f1');bevel.addColorStop(1,design.color);
+        ctx.fillStyle=bevel;
+      }
+      trace(design.paths);
       ctx.restore();
     }
     ctx.restore();
@@ -1006,6 +1287,9 @@ var EyesCore = (function () {
 
   var api = {
     EMOTIONS: EMOTIONS,
+    ACTIVITIES: ACTIVITIES,
+    EXPRESSIONS: EXPRESSIONS,
+    getActivity: getActivity,
     Spring: Spring,
     EyeSimulation: EyeSimulation,
     createSimulation: createSimulation,
@@ -1035,6 +1319,8 @@ var EyesCore = (function () {
     drawLight: drawLight,
     drawAccents: drawAccents,
     getAccentStates: getAccentStates,
+    getPropViewX: getPropViewX,
+    getPropViewY: getPropViewY,
     accentDesigns: ACCENT_DESIGNS,
   };
   if (typeof globalThis !== 'undefined') globalThis.EyesCore = api;

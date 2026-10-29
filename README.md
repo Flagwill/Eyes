@@ -58,13 +58,17 @@ eyes quit
 
 需要降低负载时，可将 Eyes 壁纸的 `AnimationFps` 配置改为 `30` 或更低，支持范围为 20–60。常驻策略、测量方式与取舍见 [ADR-008](docs/decisions/008-demand-driven-resident-rendering.md)。
 
-八种神态：待命、开心、好奇、思考、专注、惊讶、困困、困惑。支持自动眨眼、双眨眼（Shift + 空格）、八方向视线、鼠标跟随、点击双眼互动、活泼程度调节、浅色 / 暮色壁纸、磨砂浓度和沉浸预览。工作周期演示约 26 秒，可随时停止或切换表情。
+八种情绪之外，新增 20 种工作状态：听任务、做计划、读文件、找资料、创建、编辑、跑命令、用 MCP、调工具、用 skill、跑测试、排错误、做审查、保存、分派、等回应、遇阻、再试试、写总结和完成。眼形各有起势、停顿与收束：读文件逐行扫视，编辑低头落笔，命令执行收眼盯住终端，MCP 先探出一只眼再让另一只跟上，重试则先收束再振作。纸张、铅笔、迷你终端、连接节点、小手册和勾选框都是共享 Rive 素材里的向量道具，具有正面、侧面厚度和切面明暗，并随眼睛视角做小幅透视旋转。纸笔进入双眼下方的操作区域，放大镜靠近眼睛，笔迹、终端输出、连接头和翻页与眼睑共用动作节奏。关闭辅助元素后仍保留动作与眼形区别。
 
-八种表情共用无圆角矩形眼面，上、下眼睑各由五个控制点驱动。Sentient Eye Engine 的样条内核让内眼角、外眼角和中段张力能独立变化，所有参数仍通过连续弹簧过渡。开心保持等厚弯带，好奇睁眼探看，思考半眯并望向侧上方，专注收紧内侧眼睑，惊讶双眼张开，困倦低垂，困惑一侧抬眼、一侧怀疑地收住。默认配合少量辅助元素：专注与困惑的粗眉、好奇与困惑的小问号、思考的细框眼镜、开心的双星、惊讶的短线和困倦的两个小 Z。待命保持安静。它们是同一 Rive 素材中的向量，主画面、按钮缩略图和桌面同步显示。设计与兼容约定见 [辅助元素决策](docs/decisions/007-shared-expression-accessories.md)。
+调试台按理解、动手、协作、检查、暂停、收尾分组，约 70 秒的工作周期演示覆盖全部工作状态，可随时停止或切换。支持自动眨眼、双眨眼（Shift + 空格）、八方向视线、鼠标跟随、点击双眼互动、活泼程度调节、浅色 / 暮色壁纸、磨砂浓度和沉浸预览。减少动态效果时保留静态神态和道具。
+
+八种表情共用无圆角矩形眼面，上、下眼睑各由五个控制点驱动。Sentient Eye Engine 的样条内核让内眼角、外眼角和中段张力能独立变化，所有参数仍通过连续弹簧过渡。开心保持等厚弯带，好奇睁眼探看，思考半眯并望向侧上方，专注收紧内侧眼睑，惊讶双眼张开，困倦低垂，困惑一侧抬眼、一侧怀疑地收住。默认配合少量辅助元素：专注与困惑的切面眉、好奇与困惑的小问号、开心的双星、惊讶的短线和困倦的两个小 Z。待命保持安静。它们是同一 Rive 素材中的向量，主画面、按钮缩略图和桌面同步显示。设计与兼容约定见 [辅助元素决策](docs/decisions/007-shared-expression-accessories.md)。
 
 [打开八种表情对照](http://127.0.0.1:5173/gallery.html)，可同时观察等尺寸的八组眼睛，重播从待命进入表情的过程、播放微动作、隐藏名称或点击单个画面眨眼。主调试台保留光标、工作周期和沉浸预览。
 
-每种情绪包含起势和三种互补动作：开心提眼后留下笑意，好奇先探看、另一眼跟上，再略收眼检查；思考收眼、停顿后放开；困惑回看时转移两侧眼睑斜率和张力；困倦慢慢下垂后短暂抬起；专注保留稳定注视。视线、眼睑和反光共用一个可暂停时钟，切换后从同一动作起点开始。上下眼睑分担不同的行程，重复发送同一状态不会重播起势。辅助元素随同一组表情弹簧淡入淡出，眉毛略长于眼宽，具有厚眉头、轻眉峰和渐细眉尾，随眼睑起伏；星星随笑眼轻提；眼镜和问号不会随眨眼挤扁，不使用独立闪烁循环。减少动态效果保留静态神态提示。
+[打开二十种工作状态对照](http://127.0.0.1:5173/gallery.html?view=activities)，比较同一引擎中的眼形、道具和表演节奏。状态设计与接入边界见 [ADR-009](docs/decisions/009-agent-activity-performances.md)。
+
+每种情绪包含起势和三种互补动作：开心提眼后留下笑意，好奇先探看、另一眼跟上，再略收眼检查；思考收眼、停顿后放开；困惑回看时转移两侧眼睑斜率和张力；困倦慢慢下垂后短暂抬起；专注保留稳定注视。视线、眼睑和反光共用一个可暂停时钟，切换后从同一动作起点开始。上下眼睑分担不同的行程，重复发送同一状态不会重播起势。辅助元素随同一组表情弹簧淡入淡出，切面眉略长于眼宽，具有厚眉头、轻折峰和渐细眉尾，随眼睑起伏；星星随笑眼轻提；问号不会随眨眼挤扁，也不使用独立闪烁循环。思考只由半眯眼形与侧上方视线表达，不再叠加额外装饰。减少动态效果保留静态神态提示。
 
 快捷键：`1`–`8` 切换神态；空格眨眼；方向键移动视线；`F` 切换沉浸；`Esc` 退出沉浸。系统减少动态效果偏好会关闭自发动作与回弹，保留手动切换和注视。切到后台时暂停画布。
 
@@ -76,18 +80,24 @@ eyes quit
 
 ## 接入 harness
 
-八种情绪的混合权重由共享弹簧连续驱动，支持过渡中再次切换；Rive 将这些权重作用于眼睑、位置和材质，不替换离散眼睛图片。`eyes.js` 内的 `Eyes` 可复用到提供 Canvas 的宿主；本地预览通过 `window.eyes` 暴露接口：
+八种情绪和二十种工作状态的混合权重由共享弹簧连续驱动，支持过渡中再次切换；Rive 将这些权重作用于眼睑、位置和材质，不替换离散眼睛图片。`eyes.js` 内的 `Eyes` 可复用到提供 Canvas 的宿主；本地预览通过 `window.eyes` 暴露接口：
 
 ```js
 window.eyes.start();              // 收到任务 → 好奇
 window.eyes.thinking();           // 规划 → 思考
 window.eyes.working();            // 工具执行 → 专注
-window.eyes.waiting();            // 需要输入 → 困惑
+window.eyes.waiting();            // 需要输入 → 耐心倾听与暂停提示
 window.eyes.complete();           // 完成 → 开心
 window.eyes.idle();               // 待命
 window.eyes.setEmotion('sleepy'); // 也可直接指定八种神态
 window.eyes.look(-1, 1);          // 左下方，随后自动回归
 window.eyes.blink(true);          // 双眨眼
+window.eyes.setActivity('creating'); // 创建：抬眼、新纸与加号
+window.eyes.setActivity('editing');  // 编辑：低头、纸笔
+window.eyes.setActivity('running');  // 命令：专注、迷你终端
+window.eyes.setActivity('mcp');      // MCP：探出与连接节点
+window.eyes.setActivity('skill');    // skill：领会、小手册
+window.eyes.activities;             // 可用工作状态与说明（只读）
 ```
 
 Agent harness 推荐只发送生命周期命令：
@@ -100,6 +110,19 @@ eyes waiting
 eyes complete
 ```
 
+精确表达当前动作时发送 `eyes activity ID`，浏览器发送 `window.eyes.setActivity(ID)`，共享模型使用 `simulation.setActivity(ID)`：
+
+| 阶段 | 可用 ID |
+| --- | --- |
+| 理解 | `listening`、`planning`、`reading`、`searching` |
+| 动手 | `creating`、`editing`、`running` |
+| 协作 | `mcp`、`tool`、`skill`、`delegating` |
+| 检查 | `testing`、`debugging`、`reviewing` |
+| 暂停与恢复 | `waiting`、`blocked`、`retrying` |
+| 收尾 | `saving`、`summarizing`、`complete` |
+
+`eyes activity complete` 与 `eyes complete` 一致，开心 4.5 秒后淡出；`waiting` 使用柔和的倾听眼形与暂停符号。未知工作状态会报错并保留当前画面与完成计时。重复状态不会重播起势，光标关注优先于工作中的自然扫视。
+
 `start` 自动启动后台宿主并显示好奇；`thinking`、`working`、`waiting` 分别表达规划、工具执行和等待输入；`complete` 开心约 4.5 秒后淡出；`idle` 和 `hide` 只隐藏画面，宿主继续等待下一条命令。桌面宿主通过 `$XDG_RUNTIME_DIR/eyes.sock` 接收命令。每块显示器的原生壁纸插件共享相同的工作状态；光标位置由轻量 KWin 脚本经 `org.eyes.Desktop` D-Bus 服务送入动画，驱动双眼眼形、眼距、高光的位置和注意力节奏。
 
 ### Codex Desktop
@@ -108,14 +131,14 @@ eyes complete
 
 仓库中的 `integrations/codex/` 是可重复安装的源；`npm run codex:hooks:install` 可单独更新用户级 hooks。不要把同一套 hooks 再放进项目 `.codex/hooks.json`，否则会重复启动事件。事件映射、动效防抖和限制见 [docs/CODEX.md](docs/CODEX.md)。
 
-壁纸插件保留原图片，使用更强的纯模糊并缓存结果，不依赖 KWin blur；不叠加白色或染色蒙版，也不调整壁纸的饱和度、亮度或对比度。Rive 通过 Qt Quick RHI 在 GPU 绘制向量，输出纹理尺寸随屏幕构图放大，不把固定低分辨率画面拉伸到桌面。`FrameAnimation` 驱动共享弹簧输入。状态桥只监听 `127.0.0.1:38271`。后台退出或连接断开时，插件自动隐藏双眼、恢复清晰壁纸。托盘菜单可显示、隐藏、演示或退出。
+壁纸插件保留原图片，使用更强的纯模糊并缓存结果，不依赖 KWin blur；不叠加白色或染色蒙版，也不调整壁纸的饱和度、亮度或对比度。`eyes-desktop` 监听 Plasma 桌面配置；用户切换图片、壁纸包或颜色后，后台会先把新绘制参数迁入 Eyes，再通过 PlasmaShell 的运行时接口恢复 Eyes 壁纸层。只写 `kwriteconfig6` 不会切换已经运行的插件，因此两步同时执行。守护是幂等的，停在 Eyes 时不会持续写配置，也不修改面板。系统级主题工具若把 `org.kde.image` 重新设为当前插件，下一张新图片仍会被保留并重新接入；纯色壁纸沿用原颜色与填充方式。Rive 通过 Qt Quick RHI 在 GPU 绘制向量，输出纹理尺寸随屏幕构图放大，不把固定低分辨率画面拉伸到桌面。`FrameAnimation` 驱动共享弹簧输入。状态桥只监听 `127.0.0.1:38271`；客户端等 URL 设置完成后再启动，并在连接后主动请求一次快照。后台退出或连接断开时，插件自动隐藏双眼、恢复清晰壁纸。托盘菜单可显示、隐藏、演示或退出。
 
 ## 仓库结构
 
 ```text
 eyes-core.js                    共享表情、样条几何、弹簧、高光与 Canvas 渲染
 vendor/sentient-eye-engine/      MIT 样条内核移植、许可证与固定上游源码
-gallery.html gallery.js          真实共享引擎的八表情对照
+gallery.html gallery.js          真实共享引擎的情绪与工作状态对照
 eyes.js                         浏览器画布与生命周期适配
 rive-renderer.js                Rive WASM、共享素材和浏览器绘制适配
 assets/eyes/                    共享 Rive 素材与源码/二进制校验信息
@@ -141,9 +164,9 @@ AGENTS.md                       仓库记忆与后续维护约束
 
 Rive 运行时采用 MIT 许可，Qt 桥接基于 [basysKom/RiveQtQuickPlugin](https://github.com/basysKom/RiveQtQuickPlugin) 的 LGPL-3.0-or-later 代码，以独立动态库安装。版本、源码地址和许可证见 [vendor/rive](vendor/rive/README.md)。桌面适配补齐 Qt 6 枚举注册，所有输入采用小写以兼容桥接层。桌面包安装共享 `.riv` 文件、动态插件和第三方许可证。
 
-素材由 `tools/build-rive.mjs` 从共享八种姿态和动作函数生成；每种情绪包含静止、起势、主动作、跟随和收束五种基姿，共享时钟和弹簧连续驱动它们的混合。Rive 不再自行循环眼睑动画，播放进度不同也会得到相同的动作姿态。五点眼睑采用端点切线约束的连续曲率样条，去掉弧线两侧不自然的反向弯折，保留矩形眼角与开心等厚。详见 [ADR-006](docs/decisions/006-continuous-lids-and-shared-performance-clock.md)。测试同时执行真正的 Rive WASM 和 Qt GPU，检查曲率、同步、起势、暂停和像素边界。浏览器启动失败时显示共享样条降级画面，并在控制台报告错误。
+素材由 `tools/build-rive.mjs` 从共享八种情绪、二十种工作状态和动作函数生成；每种情绪包含静止、起势、主动作、跟随和收束五种基姿，共享时钟和弹簧连续驱动它们的混合。Rive 不再自行循环眼睑动画，播放进度不同也会得到相同的动作姿态。五点眼睑采用端点切线约束的连续曲率样条，去掉弧线两侧不自然的反向弯折，保留矩形眼角与开心等厚。详见 [ADR-006](docs/decisions/006-continuous-lids-and-shared-performance-clock.md)。测试同时执行真正的 Rive WASM 和 Qt GPU，检查曲率、同步、起势、暂停和像素边界。浏览器启动失败时显示共享样条降级画面，并在控制台报告错误。
 
-桌面眼睛在独立目标中优先使用 8× 多重采样，按显卡支持情况回退到 4×、2× 或单采样，并保留 SMAA。曲线细分精度提高到 4096 单位，最终画面使用线性取样和正确的预乘透明度合成，减少浅弧线和缓慢移动时的台阶、暗边。它不改变 Plasma 整体采样设置。像素回归覆盖八种表情的三个亚像素位置，同时检查中间覆盖和最多两物理像素的过渡，保留清晰轮廓。
+桌面眼睛在独立目标中优先使用 8× 多重采样，按显卡支持情况回退到 4×、2× 或单采样，并保留 SMAA。曲线细分精度提高到 4096 单位，最终画面使用线性取样和正确的预乘透明度合成，减少浅弧线和缓慢移动时的台阶、暗边。它不改变 Plasma 整体采样设置。像素回归覆盖全部 28 种姿态的三个亚像素位置，同时检查中间覆盖和最多两物理像素的过渡，保留清晰轮廓。
 
 修改表情或台本后，用官方 Rive CLI 1.7.0 在本地重新生成素材：
 
@@ -165,9 +188,11 @@ npm run check
 npm run desktop:build
 ```
 
-`npm run desktop:test` 使用 Qt 6 检查 GPU 实际像素输出、八种表情、透明边界、注意力与眨眼，需要支持 ShaderEffect 的 RHI 后端；当前会话无法打开测试窗口时，可用 `QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl npm run desktop:test` 运行离屏实际像素检查。Qt 6 工具目录可通过 `QT6_BIN_DIR` 指定。`npm test` 检查表情间的物理收敛、帧率稳定性、单 / 双眨眼时序、开心弯带几何、全屏构图、高光继承和注意力行为。`npm run check` 检查脚本语法，`npm run desktop:build` 编译 Qt 宿主。涉及安装或桌面层时应重新运行 `npm run desktop:install`、`eyes status`，并确认壁纸层位于普通窗口下方、输入完全穿透、全局光标能驱动视线和高光。
+`npm run desktop:test` 使用 Qt 6 检查 GPU 实际像素输出、全部 28 种姿态、透明边界、注意力与眨眼，需要支持 ShaderEffect 的 RHI 后端；当前会话无法打开测试窗口时，可用 `QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl npm run desktop:test` 运行离屏实际像素检查。Qt 6 工具目录可通过 `QT6_BIN_DIR` 指定。`npm test` 检查表情间的物理收敛、帧率稳定性、单 / 双眨眼时序、开心弯带几何、全屏构图、高光继承和注意力行为。`npm run check` 检查脚本语法，`npm run desktop:build` 编译 Qt 宿主。涉及安装或桌面层时应重新运行 `npm run desktop:install`、`eyes status`，并确认壁纸层位于普通窗口下方、输入完全穿透、全局光标能驱动视线和高光。
 
 `npm run desktop:hidpi:test` 在 X11 / XWayland 实际窗口中验证双倍像素密度。Rive 目标尺寸包括屏幕像素密度，再映射回逻辑构图。测试窗口会适配屏幕，避免被窗口管理器裁切。Qt 6.12 离屏后端的高 DPI 截图连普通矩形也会截错，因此这项检查使用实际窗口后端。
+
+`npm run desktop:activity:test` 在独立 D-Bus 和临时运行目录中测试真实宿主的所有工作状态、非法输入、完成计时及隐藏后继续运行。与光标桥回归一样，先停止已运行的桌面宿主，以独占本机桥接端口。
 
 详细动作台本、研究参考和视觉约束见 [docs/MOTION.md](docs/MOTION.md)；维护须知与不可破坏的桌面约束见 [AGENTS.md](AGENTS.md)；开发截图见 [docs/gallery](docs/gallery/)。
 

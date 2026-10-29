@@ -59,8 +59,8 @@ function vertices(eye) {
 
 const sides=['l','r'];
 const sceneId=id(), machineId=id(), blendId=id();
-const weights=core.EMOTIONS.flatMap(e=>[e.id+'still',e.id+'act',e.id+'entry',e.id+'follow',e.id+'resolve']);
-const inputIds=Object.fromEntries([...weights,'accents','flow','flowphase','blink','lookx','looky','lightx','lighty'].map(name=>[name,id()]));
+const weights=core.EXPRESSIONS.flatMap(e=>[e.id+'still',e.id+'act',e.id+'entry',e.id+'follow',e.id+'resolve']);
+const inputIds=Object.fromEntries([...weights,'accents','flow','flowphase','blink','lookx','looky','lightx','lighty','propbase','propleft','propright','propup','propdown'].map(name=>[name,id()]));
 const animationIds=weights.map(()=>id());
 const geometryIds={};
 let scene='';
@@ -104,8 +104,13 @@ for (const side of sides) {
   </Node>`;
 }
 
+// Rive paints earlier artboard children above later siblings. Keep the eyes
+// behind the accessories to match the Canvas fallback's explicit draw order.
+const eyeScene=scene;
+scene='';
+
 // Use the exact same font-free paths as the fallback renderer. Cubic handles
-// remain vector data on both runtimes, including the transparent glasses rims.
+// remain vector data on both runtimes.
 function accentPath(commands) {
   const points=[];
   for(const [command,...v] of commands) {
@@ -128,16 +133,28 @@ function accentPath(commands) {
     return `<CubicDetachedVertex ${Object.entries(attrs).map(([k,v])=>`${k}="${n(v)}"`).join(' ')}/>`;
   }).join('')}</PointsPath>`;
 }
-const accentRoot=id(), accentIds={};
+const accentRoot=id(), accentIds={}, propYaw=id(), propPitch=id();
 const heldAccents=core.getAccentStates(core.getPose('idle'));
 scene+=`<Node id="${accentRoot}" name="accessories" x="280" y="170">`;
-for(const design of core.accentDesigns) {
+const orderedDesigns=[...core.accentDesigns.filter(d=>!d.prop),...core.accentDesigns.filter(d=>d.prop).reverse()];
+let inProps=false;
+for(const design of orderedDesigns) {
+  if(design.prop&&!inProps) {
+    scene+=`<Node id="${propPitch}" name="prop-pitch"><Node id="${propYaw}" name="prop-yaw">`;
+    inProps=true;
+  }
   const key=record('Node',{},heldAccents[design.id]);
   accentIds[design.id]=key;
+  const front=design.prop ? `<LinearGradient startX="0" startY="-22" endX="0" endY="22"><GradientStop position="0" colorValue="FFDFC8F1"/><GradientStop position="1" colorValue="FFCFB5E8"/></LinearGradient>`
+    : `<SolidColor colorValue="FF${(design.color || '#b08add').slice(1).toUpperCase()}"/>`;
+  const body=design.body ? `<Shape>${design.body.map(accentPath).join('')}<Fill><LinearGradient startX="-24" startY="-24" endX="24" endY="24"><GradientStop position="0" colorValue="99B18BD2"/><GradientStop position="1" colorValue="99825CA9"/></LinearGradient></Fill></Shape>` : '';
+  const depth=design.depth ? `<Shape x="${design.depth}" y="${design.depth*1.25}">${(design.body||design.paths).map(accentPath).join('')}<Fill><SolidColor colorValue="FF654781"/></Fill></Shape>` : '';
   scene+=`<Node id="${key}" name="accent-${design.id}" ${Object.entries(heldAccents[design.id]).map(([k,v])=>`${k}="${n(v)}"`).join(' ')}>
-    <Shape>${design.paths.map(accentPath).join('')}<Fill><SolidColor colorValue="FF${(design.color || '#b08add').slice(1).toUpperCase()}"/></Fill></Shape></Node>`;
+    <Shape>${design.paths.map(accentPath).join('')}<Fill>${front}</Fill></Shape>${body}${depth}</Node>`;
 }
+if(inProps)scene+='</Node></Node>';
 scene+='</Node>';
+scene+=eyeScene;
 
 function snapshot(emotion,time,moving) {
   const pose=moving===2 ? core.getEntryPose(emotion) : moving===0 ? core.getPose(emotion)
@@ -168,7 +185,7 @@ function timeline(name,animationId,values) {
   return `<LinearAnimation id="${animationId}" name="${name}" fps="60" duration="60" loopValue="loop">${body}</LinearAnimation>`;
 }
 let timelines='';
-core.EMOTIONS.forEach((emotion,e)=>{
+core.EXPRESSIONS.forEach((emotion,e)=>{
   for(let variant=0;variant<5;variant++)
     timelines+=timeline(weights[e*5+variant],animationIds[e*5+variant],snapshot(emotion.id,0,variant));
 });
@@ -196,8 +213,17 @@ control('lookx',[-1,0,1].map(value=>({value,values:Object.fromEntries(sides.flat
 control('looky',[-1,0,1].map(value=>({value,values:Object.fromEntries(sides.map(s=>[geometryIds[s].vertical,{scaleY:1-value*.04}]))})));
 control('lightx',[-1,0,1].map(value=>({value,values:Object.fromEntries(sides.map(s=>[geometryIds[s].lightLook,{x:value*.07}]))})));
 control('lighty',[-1,0,1].map(value=>({value,values:Object.fromEntries(sides.map(s=>[geometryIds[s].lightLook,{y:value*.06}]))})));
+// Reset to the held view before applying one signed turn. Sequential 1D
+// blends otherwise retain the preceding frame's transform in this runtime.
+function propView(name,node,getView,negative,positive) {
+  const state=id(),animations=[id(),id(),id()],inputs=['propbase',negative,positive];
+  layers+=`<StateMachineLayer name="${name}"><AnyState x="200" y="-120"/><ExitState x="400" y="-120"/><EntryState><StateTransition stateToId="${state}"/></EntryState><BlendStateDirect id="${state}" x="200" y="0">${inputs.map((input,i)=>`<BlendAnimationDirect inputId="${inputIds[input]}" animationId="${animations[i]}"/>`).join('')}</BlendStateDirect></StateMachineLayer>`;
+  [0,-1,1].forEach((value,i)=>{timelines+=timeline(name+i,animations[i],{[node]:getView(value)});});
+}
+propView('PropYaw',propYaw,core.getPropViewX,'propleft','propright');
+propView('PropPitch',propPitch,core.getPropViewY,'propup','propdown');
 
-const source=`<Rive version="1" kind="fragment"><Artboard id="${sceneId}" name="Eyes" width="560" height="340" defaultStateMachineId="${machineId}">${scene}<StateMachine id="${machineId}" name="Eyes">${Object.entries(inputIds).map(([name,key])=>`<StateMachineNumber id="${key}" name="${name}" value="${name==='idlestill'||name==='accents'?100:0}"/>`).join('')}${layers}</StateMachine>${timelines}</Artboard></Rive>`;
+const source=`<Rive version="1" kind="fragment"><Artboard id="${sceneId}" name="Eyes" width="560" height="340" defaultStateMachineId="${machineId}">${scene}<StateMachine id="${machineId}" name="Eyes">${Object.entries(inputIds).map(([name,key])=>`<StateMachineNumber id="${key}" name="${name}" value="${name==='idlestill'||name==='accents'||name==='propbase'?100:0}"/>`).join('')}${layers}</StateMachine>${timelines}</Artboard></Rive>`;
 await writeFile(new URL('scene.rml',project),source);
 await writeFile(new URL('rive.yaml',project),'name: eyes\n');
 const cli=process.env.EYES_RIVE_CLI || 'rive';
@@ -210,6 +236,6 @@ await copyFile(new URL('build/eyes.riv',project),new URL('eyes.riv',output));
 const inputs=await Promise.all(['eyes-core.js','vendor/sentient-eye-engine/rig.js','tools/build-rive.mjs'].map(f=>readFile(new URL(f,root))));
 const bytes=await readFile(new URL('eyes.riv',output));
 await writeFile(new URL('manifest.json',output),JSON.stringify({format:1,artboard:'Eyes',stateMachine:'Eyes',
-  inputs:Object.keys(inputIds),sourceHash:createHash('sha256').update(Buffer.concat(inputs)).digest('hex'),
+  activities:core.ACTIVITIES,inputs:Object.keys(inputIds),sourceHash:createHash('sha256').update(Buffer.concat(inputs)).digest('hex'),
   assetHash:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length},null,2)+'\n');
 console.log(`Built shared Rive performance: ${bytes.length} bytes`);

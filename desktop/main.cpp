@@ -7,16 +7,21 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QFile>
+#include <QFileSystemWatcher>
 #include <QGuiApplication>
 #include <QHostAddress>
 #include <QIcon>
+#include <QJsonValue>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QLockFile>
 #include <QMenu>
 #include <QPointer>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QScreen>
 #include <QSet>
@@ -30,6 +35,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <unistd.h>
 
 namespace {
 
@@ -151,6 +157,7 @@ signals:
     void attentionChanged();
     void actionTriggered(const QJsonObject &action);
     void quitRequested();
+    void demoRequested();
 
 private:
     void setState(const QString &motion, const QString &eyebrow,
@@ -234,14 +241,40 @@ QJsonObject EyesService::applyCommand(const QString &line)
                  QStringLiteral("专注执行中"),
                  QStringLiteral("一步一步把事情做好"), true);
     } else if (command == QLatin1String("waiting")) {
-        setState(QStringLiteral("confused"), QStringLiteral("等待你的回应"),
+        setState(QStringLiteral("waiting"), QStringLiteral("等待你的回应"),
                  QStringLiteral("需要一点确认"),
                  QStringLiteral("我在听，请告诉我下一步"), true);
-    } else if (command == QLatin1String("complete")) {
+    } else if (command == QLatin1String("complete")
+               || (command == QLatin1String("activity")
+                   && parts.size() == 2 && parts.value(1) == QLatin1String("complete"))) {
         setState(QStringLiteral("happy"), QStringLiteral("工作完成"),
                  QStringLiteral("已经完成了"),
                  QStringLiteral("这一步做得很好，准备继续下一件"), true);
         m_completionTimer.start();
+    } else if (command == QLatin1String("activity")) {
+        static const QJsonArray activities = [] {
+            QFile file(QStringLiteral(":/assets/eyes/manifest.json"));
+            if (!file.open(QIODevice::ReadOnly))
+                return QJsonArray{};
+            return QJsonDocument::fromJson(file.readAll()).object()
+                .value(QStringLiteral("activities")).toArray();
+        }();
+        QJsonObject activity;
+        if (parts.size() == 2) {
+            for (const QJsonValue &value : activities) {
+                if (value.toObject().value(QStringLiteral("id")).toString() == parts[1]) {
+                    activity = value.toObject();
+                    break;
+                }
+            }
+        }
+        if (activity.isEmpty()) {
+            return {{QStringLiteral("ok"), false},
+                    {QStringLiteral("error"), QStringLiteral("usage: activity <known-id>")}};
+        }
+        setState(parts[1], QStringLiteral("Eyes 工作状态"),
+                 activity.value(QStringLiteral("name")).toString(),
+                 activity.value(QStringLiteral("description")).toString(), true);
     } else if (command == QLatin1String("idle")) {
         setState(QStringLiteral("idle"), QStringLiteral("Eyes 在线"),
                  QStringLiteral("自在待命"),
@@ -304,9 +337,7 @@ QJsonObject EyesService::applyCommand(const QString &line)
     } else if (command == QLatin1String("status")) {
         // Status is intentionally read-only.
     } else if (command == QLatin1String("demo")) {
-        setState(QStringLiteral("curious"), QStringLiteral("演示开始"),
-                 QStringLiteral("正在理解任务"),
-                 QStringLiteral("完整的桌面工作周期预览"), true);
+        Q_EMIT demoRequested();
     } else if (command == QLatin1String("quit")) {
         QTimer::singleShot(80, this, &EyesService::quitRequested);
     } else {
@@ -389,17 +420,30 @@ private:
                 .queryItemValue(QStringLiteral("screen"));
         socket->setProperty("eyesScreenName", screenName);
         m_sockets.append(socket);
+        qInfo().noquote()
+            << "Eyes: Plasma wallpaper connected to the state bridge"
+            << (screenName.isEmpty() ? QStringLiteral("(unknown screen)")
+                                     : screenName);
         connect(socket, &QWebSocket::disconnected, this,
                 [this, socket] {
                     m_sockets.removeAll(socket);
                     socket->deleteLater();
+                    qInfo().noquote()
+                        << "Eyes: Plasma wallpaper disconnected from the state bridge";
                 });
         connect(socket, &QWebSocket::textMessageReceived, socket,
-                [socket](const QString &message) {
+                [this, socket](const QString &message) {
                     if (message == QLatin1String("ping"))
                         socket->sendTextMessage(QStringLiteral("pong"));
+                    else if (message == QLatin1String("snapshot"))
+                        sendSnapshot(socket);
                 });
 
+        sendSnapshot(socket);
+    }
+
+    void sendSnapshot(QWebSocket *socket)
+    {
         socket->sendTextMessage(jsonString({
             {QStringLiteral("type"), QStringLiteral("snapshot")},
             {QStringLiteral("visible"), m_service->shown()},
@@ -466,6 +510,195 @@ private:
     QList<QWebSocket *> m_sockets;
 };
 
+class WallpaperGuard final : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit WallpaperGuard(QObject *parent = nullptr)
+        : QObject(parent)
+    {
+        if (qEnvironmentVariableIsSet("EYES_DISABLE_WALLPAPER_GUARD"))
+            return;
+        const QByteArray configured =
+            qgetenv("XDG_CONFIG_HOME").trimmed();
+        const QString configHome = !configured.isEmpty()
+            ? QFile::decodeName(configured)
+            : QDir::home().filePath(QStringLiteral(".config"));
+        m_configPath =
+            QDir(configHome).filePath(
+                QStringLiteral("plasma-org.kde.plasma.desktop-appletsrc"));
+        const QByteArray explicitScript =
+            qgetenv("EYES_CONFIGURE_PLASMA_WALLPAPER");
+        QStringList candidates;
+        if (!explicitScript.trimmed().isEmpty())
+            candidates.append(QFile::decodeName(explicitScript));
+        const QString found = QStandardPaths::locate(
+            QStandardPaths::GenericDataLocation,
+            QStringLiteral("eyes/configure-plasma-wallpaper.py"));
+        if (!found.isEmpty())
+            candidates.append(found);
+        candidates.append(
+            QDir(QCoreApplication::applicationDirPath())
+                .absoluteFilePath(
+                    QStringLiteral("../packaging/configure-plasma-wallpaper.py")));
+        candidates.append(
+            QDir(QCoreApplication::applicationDirPath())
+                .absoluteFilePath(
+                    QStringLiteral("../share/eyes/configure-plasma-wallpaper.py")));
+        for (const QString &candidate : std::as_const(candidates)) {
+            if (QFileInfo(candidate).isFile()) {
+                m_scriptPath = QFileInfo(candidate).absoluteFilePath();
+                break;
+            }
+        }
+
+        m_debounceTimer.setSingleShot(true);
+        m_debounceTimer.setInterval(450);
+        m_retryTimer.setSingleShot(true);
+        m_retryTimer.setInterval(1800);
+        connect(&m_debounceTimer, &QTimer::timeout, this,
+                [this] { reconcile(); });
+        connect(&m_retryTimer, &QTimer::timeout, this, [this] {
+            if (!m_running)
+                reconcile();
+        });
+        connect(&m_watcher, &QFileSystemWatcher::fileChanged, this,
+                [this](const QString &path) {
+                    watchConfig();
+                    scheduleReconcile();
+                });
+        connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this,
+                [this](const QString &) {
+                    watchConfig();
+                    scheduleReconcile();
+                });
+
+        if (QFileInfo::exists(m_configPath)) {
+            watchConfig();
+            // Plasma may restore an old plugin after a theme or session change.
+            // Reconcile once after startup and again when a missing package
+            // wallpaper becomes readable.
+            QTimer::singleShot(0, this, [this] { reconcile(); });
+            QTimer::singleShot(6000, this, [this] {
+                if (!m_running)
+                    reconcile();
+            });
+        }
+    }
+
+private:
+    void watchConfig()
+    {
+        const QString directory = QFileInfo(m_configPath).absolutePath();
+        if (QFileInfo::exists(directory)
+            && !m_watcher.directories().contains(directory)) {
+            m_watcher.addPath(directory);
+        }
+        if (QFileInfo::exists(m_configPath)
+            && !m_watcher.files().contains(m_configPath)) {
+            m_watcher.addPath(m_configPath);
+        }
+    }
+
+    void scheduleReconcile()
+    {
+        m_debounceTimer.start();
+    }
+
+    void reconcile()
+    {
+        if (m_running)
+            return;
+        if (!QFileInfo(m_configPath).exists()) {
+            m_failures++;
+            m_retryTimer.start();
+            return;
+        }
+        if (!QFileInfo::exists(m_configPath)
+            || !QFileInfo::exists(m_scriptPath)) {
+            m_failures++;
+            m_retryTimer.start();
+            return;
+        }
+
+        m_running = true;
+        auto *process = new QProcess(this);
+        m_process = process;
+        connect(process, &QProcess::readyReadStandardOutput, this,
+                [this, process] {
+                    m_stdout.append(process->readAllStandardOutput());
+                    if (m_stdout.size() > 65536) {
+                        m_stdout = m_stdout.right(65536);
+                    }
+                });
+        connect(process, qOverload<int, QProcess::ExitStatus>(
+                    &QProcess::finished),
+                this, [this, process](int exitCode, QProcess::ExitStatus status) {
+                    m_stdout.append(process->readAllStandardOutput());
+                    m_process = nullptr;
+                    m_running = false;
+                    process->deleteLater();
+
+                    const QByteArray output = m_stdout.trimmed();
+                    m_stdout.clear();
+                    const QJsonObject result =
+                        QJsonDocument::fromJson(output).object();
+                    if (status != QProcess::NormalExit || exitCode != 0
+                        || !result.value(QStringLiteral("ok")).toBool()) {
+                        m_failures++;
+                        qWarning().noquote()
+                            << "Eyes: unable to preserve the active Plasma "
+                               "wallpaper; retrying";
+                        m_retryTimer.start();
+                        return;
+                    }
+
+                    m_failures = 0;
+                    if (result.value(QStringLiteral("changed")).toBool()) {
+                        qInfo().noquote()
+                            << "Eyes: active Plasma wallpaper mounted in Eyes";
+                    }
+                    const QJsonArray pending =
+                        result.value(QStringLiteral("pending")).toArray();
+                    if (!pending.isEmpty())
+                        m_retryTimer.start();
+                });
+        connect(process, &QProcess::errorOccurred, this,
+                [this](QProcess::ProcessError error) {
+                    if (error == QProcess::FailedToStart && m_process) {
+                        m_process->deleteLater();
+                        m_process = nullptr;
+                        m_running = false;
+                        m_failures++;
+                        m_retryTimer.start();
+                    }
+                });
+
+        m_stdout.clear();
+        process->start(
+            QStringLiteral("python3"),
+            {
+                m_scriptPath,
+                QStringLiteral("--config"),
+                m_configPath,
+                QStringLiteral("--json"),
+                QStringLiteral("--activate-runtime"),
+            },
+            QIODevice::ReadOnly);
+    }
+
+    QString m_configPath;
+    QString m_scriptPath;
+    QFileSystemWatcher m_watcher;
+    QTimer m_debounceTimer;
+    QTimer m_retryTimer;
+    QPointer<QProcess> m_process;
+    QByteArray m_stdout;
+    bool m_running = false;
+    int m_failures = 0;
+};
+
 class DesktopApplication final : public QObject
 {
     Q_OBJECT
@@ -486,16 +719,51 @@ public:
 
         m_wallpaperBridge = new WallpaperBridge(&m_service, this);
         if (!m_wallpaperBridge->start()) {
-            QTimer::singleShot(0, m_application, &QCoreApplication::quit);
-            return;
+            qWarning() << "Eyes bridge is busy; retrying without leaving the host idle";
+            m_bridgeRetryTimer.setSingleShot(true);
+            m_bridgeRetryTimer.setInterval(1200);
+            connect(&m_bridgeRetryTimer, &QTimer::timeout, this, [this] {
+                if (m_wallpaperBridge->start())
+                    m_bridgeRetryTimer.stop();
+                else
+                    m_bridgeRetryTimer.start();
+            });
+            m_bridgeRetryTimer.start();
         }
 
-        setupSocketServer();
+        if (!setupSocketServer()) {
+            // A stale owner or a concurrently starting service will release
+            // the lock shortly. Keep trying so a transient race never leaves
+            // Plasma connected to a dead bridge.
+            m_socketRetryTimer.setSingleShot(true);
+            m_socketRetryTimer.setInterval(1200);
+            connect(&m_socketRetryTimer, &QTimer::timeout, this, [this] {
+                if (setupSocketServer())
+                    m_socketRetryTimer.stop();
+                else
+                    m_socketRetryTimer.start();
+            });
+            m_socketRetryTimer.start();
+        }
+
         setupCursorDBus();
         setupTray();
+        m_wallpaperGuard = new WallpaperGuard(this);
 
         connect(&m_service, &EyesService::quitRequested,
                 m_application, &QCoreApplication::quit);
+        connect(&m_service, &EyesService::demoRequested,
+                this, &DesktopApplication::playDemo);
+        m_demoTimer.setInterval(3400);
+        connect(&m_demoTimer, &QTimer::timeout, this, [this] {
+            if (++m_demoIndex >= m_demoCommands.size()) {
+                m_demoTimer.stop();
+                return;
+            }
+            m_service.applyCommand(m_demoCommands[m_demoIndex]);
+            if (m_demoIndex == m_demoCommands.size() - 1)
+                m_demoTimer.stop();
+        });
         connect(m_application, &QCoreApplication::aboutToQuit, this, [this] {
             if (m_server) {
                 m_server->close();
@@ -526,15 +794,18 @@ private:
         return true;
     }
 
-    void setupSocketServer()
+    bool setupSocketServer()
     {
+        if (m_server)
+            return true;
         m_server = new QLocalServer(this);
         m_server->setSocketOptions(QLocalServer::UserAccessOption);
         if (!m_server->listen(m_socketPath)) {
             qWarning().noquote() << "Unable to listen on" << m_socketPath
                                  << ":" << m_server->errorString();
-            QTimer::singleShot(0, m_application, &QCoreApplication::quit);
-            return;
+            delete m_server;
+            m_server = nullptr;
+            return false;
         }
 
         connect(m_server, &QLocalServer::newConnection, this, [this] {
@@ -548,6 +819,8 @@ private:
                             const QByteArray line =
                                 buffer->left(buffer->indexOf('\n'));
                             buffer->clear();
+                            if (line.trimmed() != "status")
+                                m_demoTimer.stop();
                             const QJsonObject response = m_service.applyCommand(
                                 QString::fromUtf8(line));
                             socket->write(
@@ -563,6 +836,7 @@ private:
                         });
             }
         });
+        return true;
     }
 
     void setupCursorDBus()
@@ -584,9 +858,9 @@ private:
         m_tray->setToolTip(QStringLiteral("Eyes"));
         auto *menu = new QMenu;
         menu->addAction(QStringLiteral("显示双眼"), this,
-                        [this] { m_service.setShown(true); });
+                        [this] { m_demoTimer.stop(); m_service.setShown(true); });
         menu->addAction(QStringLiteral("暂时隐藏"), this,
-                        [this] { m_service.setShown(false); });
+                        [this] { m_demoTimer.stop(); m_service.setShown(false); });
         menu->addSeparator();
         menu->addAction(QStringLiteral("预览完整工作周期"), this,
                         [this] { playDemo(); });
@@ -596,6 +870,8 @@ private:
         m_tray->setContextMenu(menu);
         connect(m_tray, &QSystemTrayIcon::activated, this,
                 [this](QSystemTrayIcon::ActivationReason reason) {
+                    if (reason == QSystemTrayIcon::Trigger)
+                        m_demoTimer.stop();
                     if (reason == QSystemTrayIcon::Trigger)
                         m_service.applyCommand(QStringLiteral("toggle"));
                 });
@@ -607,31 +883,33 @@ private:
     QString m_socketPath;
     std::unique_ptr<QLockFile> m_lockFile;
     QLocalServer *m_server = nullptr;
+    QTimer m_bridgeRetryTimer;
+    QTimer m_socketRetryTimer;
     EyesService m_service;
     WallpaperBridge *m_wallpaperBridge = nullptr;
     QSystemTrayIcon *m_tray = nullptr;
+    WallpaperGuard *m_wallpaperGuard = nullptr;
+    QTimer m_demoTimer;
+    QStringList m_demoCommands;
+    int m_demoIndex = 0;
 };
 
 void DesktopApplication::playDemo()
 {
-    struct Step {
-        int delay;
-        const char *command;
-    };
-    static const Step steps[] = {
-        {0, "start"},
-        {2500, "thinking"},
-        {5200, "working"},
-        {8500, "waiting"},
-        {11600, "working"},
-        {14500, "complete"},
-    };
-    for (const Step &step : steps) {
-        QTimer::singleShot(step.delay, this,
-                           [this, command = QString::fromLatin1(step.command)] {
-                               m_service.applyCommand(command);
-                           });
-    }
+    m_demoTimer.stop();
+    m_demoCommands.clear();
+    const QStringList order = {QStringLiteral("listening"), QStringLiteral("planning"),
+        QStringLiteral("reading"), QStringLiteral("searching"), QStringLiteral("skill"),
+        QStringLiteral("creating"), QStringLiteral("editing"), QStringLiteral("running"),
+        QStringLiteral("mcp"), QStringLiteral("tool"), QStringLiteral("delegating"),
+        QStringLiteral("testing"), QStringLiteral("blocked"), QStringLiteral("debugging"),
+        QStringLiteral("waiting"), QStringLiteral("retrying"), QStringLiteral("reviewing"),
+        QStringLiteral("saving"), QStringLiteral("summarizing"), QStringLiteral("complete")};
+    for (const QString &activity : order)
+        m_demoCommands.append(QStringLiteral("activity ") + activity);
+    m_demoIndex = 0;
+    m_service.applyCommand(m_demoCommands.front());
+    m_demoTimer.start();
 }
 
 } // namespace

@@ -57,6 +57,63 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/hooks/eyes-codex-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/hooks/eyes-codex-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/hooks/eyes-codex-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/hooks/eyes-codex-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/hooks/eyes-codex-hook.py\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

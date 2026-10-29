@@ -4,6 +4,8 @@ import './eyes-core.js';
 const core = globalThis.EyesCore;
 
 export const EMOTIONS = core.EMOTIONS;
+export const ACTIVITIES = core.ACTIVITIES;
+export const EXPRESSIONS = core.EXPRESSIONS;
 export const Spring = core.Spring;
 export const getPose = core.getPose;
 export const getLayout = core.getLayout;
@@ -87,7 +89,12 @@ export class Eyes {
 
   setEmotion(id) {
     this.engine.setEmotion(id);
-    this.canvas.setAttribute('aria-label', `${EMOTIONS.find((item) => item.id === id).name}的紫色双眼`);
+    this.canvas.setAttribute('aria-label', `${EXPRESSIONS.find((item) => item.id === id).name}的紫色双眼`);
+  }
+
+  setActivity(id) {
+    core.getActivity(id);
+    this.setEmotion(id);
   }
 
   blink(double = false) {

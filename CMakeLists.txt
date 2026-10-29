@@ -54,6 +54,7 @@ qt_add_resources(eyes-desktop "eyes_resources"
     PREFIX "/"
     FILES
         desktop/eyes-tray.svg
+        assets/eyes/manifest.json
 )
 
 target_link_libraries(eyes-desktop PRIVATE
@@ -67,6 +68,8 @@ target_link_libraries(eyes-desktop PRIVATE
 
 install(TARGETS eyes-desktop RUNTIME DESTINATION bin)
 install(PROGRAMS bin/eyes DESTINATION bin)
+install(PROGRAMS packaging/configure-plasma-wallpaper.py
+    DESTINATION share/eyes)
 install(FILES
     packaging/eyes-desktop.desktop
     DESTINATION share/applications

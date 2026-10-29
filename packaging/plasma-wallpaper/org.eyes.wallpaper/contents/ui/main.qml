@@ -23,6 +23,19 @@ WallpaperItem {
     readonly property string wallpaperSource: String(
         root.configuration.Image || ""
     )
+    readonly property color wallpaperColor: String(
+        root.configuration.Color || "#d8d2df"
+    )
+    readonly property int wallpaperFillMode: {
+        var mode = Number(root.configuration.FillMode);
+        if (mode === 0) return Image.Stretch;
+        if (mode === 1) return Image.PreserveAspectFit;
+        if (mode === 3) return Image.Tile;
+        if (mode === 4) return Image.TileVertically;
+        if (mode === 5) return Image.TileHorizontally;
+        if (mode === 6) return Image.Pad;
+        return Image.PreserveAspectCrop;
+    }
     property var frameSamples: []
     property real performanceSince: 0
 
@@ -37,14 +50,15 @@ WallpaperItem {
 
     Rectangle {
         anchors.fill: parent
-        color: "#d8d2df"
+        color: root.wallpaperColor
     }
 
     Image {
         id: wallpaperImage
         anchors.fill: parent
         source: root.wallpaperSource
-        fillMode: Image.PreserveAspectCrop
+        fillMode: root.wallpaperFillMode
+        autoTransform: true
         cache: true
         asynchronous: true
     }
@@ -230,16 +244,29 @@ WallpaperItem {
 
     WebSocket {
         id: bridgeSocket
-        active: true
+        // Let the URL settle before activating. Activating declaratively can
+        // race the URL initializer in a long-lived Plasma QML engine and leave
+        // the client permanently disconnected while the wallpaper itself loads.
+        active: false
         url: root.bridgeUrl + "?screen=" + encodeURIComponent(Screen.name || "")
+
+        Component.onCompleted: root.connectBridge()
 
         onStatusChanged: function (status) {
             if (status === WebSocket.Open) {
                 reconnectTimer.stop();
+                bridgeSocket.sendTextMessage("snapshot");
                 return;
             }
-            root.shown = false;
-            reconnectTimer.start();
+            if (status === WebSocket.Error || status === WebSocket.Closed) {
+                root.shown = false;
+                reconnectTimer.start();
+            }
+        }
+
+        onErrorStringChanged: {
+            if (status === WebSocket.Error && errorString)
+                console.warn("Eyes bridge unavailable:", errorString);
         }
 
         onTextMessageReceived: function(message) {
@@ -256,10 +283,15 @@ WallpaperItem {
         interval: 1200
         repeat: false
         onTriggered: {
-            bridgeSocket.active = false;
-            bridgeSocket.url = root.bridgeUrl + "?screen=" + encodeURIComponent(Screen.name || "");
-            bridgeSocket.active = true;
+            root.connectBridge();
         }
+    }
+
+    function connectBridge() {
+        bridgeSocket.active = false;
+        bridgeSocket.url = root.bridgeUrl + "?screen="
+            + encodeURIComponent(Screen.name || "");
+        bridgeSocket.active = true;
     }
 
     function resizeEngine() {

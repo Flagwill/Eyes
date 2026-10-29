@@ -49,6 +49,7 @@ Item {
             eyes.simulation = Core.EyesCore.createSimulation({reducedMotion: true});
             eyes.simulation.autonomous = false;
             eyes.simulation.follow = false;
+            eyes.simulation.accents = false;
             eyes.advance(0);
             tryCompare(eyes, "loaded", true, 10000);
         }
@@ -72,7 +73,7 @@ Item {
             return {r: image.red(x,y), g: image.green(x,y), b: image.blue(x,y)};
         }
         function test_all_expressions_data() {
-            return Core.EyesCore.EMOTIONS.map(e => ({tag:e.id}));
+            return Core.EyesCore.EXPRESSIONS.map(e => ({tag:e.id}));
         }
         function test_all_expressions(data) {
             settle(data.tag);
@@ -181,7 +182,7 @@ Item {
         }
         function test_curved_edges_have_pixel_coverage_data() {
             const rows = [];
-            for (const e of Core.EyesCore.EMOTIONS) for (const offset of [0, .375, .75])
+            for (const e of Core.EyesCore.EXPRESSIONS) for (const offset of [0, .375, .75])
                 rows.push({tag: e.id + "-" + offset, emotion: e.id, offset: offset});
             return rows;
         }
@@ -199,9 +200,14 @@ Item {
                     if (x === previousX) continue;
                     previousX = x;
                     let partial = 0;
+                    // Compare with the adjacent opaque surface. A fixed green
+                    // cutoff discarded valid 62.5–87.5% MSAA coverage on dark
+                    // purple lids at some DPR=2 phases.
+                    const solid = image.green(x, y - edge * 4);
                     for (let dy = -4; dy <= 4; dy++) {
                         const green = image.green(x, y + dy);
-                        if (green > 155 && green < 245) partial++;
+                        const coverage = (255 - green) / Math.max(1, 255 - solid);
+                        if (coverage > .1 && coverage < .9) partial++;
                     }
                     columns++;
                     if (partial > 0) covered++;
@@ -247,38 +253,74 @@ Item {
             return [
                 {tag:"happy", x:211,y:-65},
                 {tag:"curious",x:214.9,y:-88.3},
-                {tag:"thinking",x:-199,y:15},
-                // The inner brow head extends past the eye's horizontal edge.
-                {tag:"focused",x:-24.34,y:-30.47},
+                {tag:"focused",x:-108,y:-40.84},
                 {tag:"surprised",x:-212,y:-103},
                 {tag:"sleepy",x:207,y:-34.5},
                 {tag:"confused",x:215.08,y:-59}
             ];
         }
         function test_accessories(data) {
+            eyes.simulation.accents=true;
             settle(data.tag);
             const p=modelPoint(data.x,data.y);
             const visible=sample(grabImage(eyes),p);
             verify(visible.g<237 && visible.b>visible.g+12,
-                data.tag+" needs a visible secondary purple vector cue outside the eye");
+                data.tag+" needs a visible secondary vector cue at its authored position");
             eyes.simulation.accents=false;
             eyes.advance(1/60);
             wait(90);
             verify(sample(grabImage(eyes),p).g>250,
                 "Disabling accessories must clear their actual pixels");
         }
-        function test_glasses_have_clear_lenses_and_do_not_blink() {
-            settle("thinking");
-            const rim=modelPoint(-199,15), lens=modelPoint(-112,-37);
-            const before=sample(grabImage(eyes),rim).g;
-            verify(sample(grabImage(eyes),lens).g>250,
-                "Glasses are hollow vector rims, with no opaque lens panel");
+        function test_accessories_do_not_blink() {
+            eyes.simulation.accents=true;
+            settle("happy");
+            const p=modelPoint(211,-65);
+            const before=sample(grabImage(eyes),p);
             eyes.simulation.blink();eyes.advance(.05);eyes.advance(.05);
             wait(90);
-            verify(Math.abs(sample(grabImage(eyes),rim).g-before)<3,
-                "Blinking must not squash or fade glasses");
+            const during=sample(grabImage(eyes),p);
+            verify(Math.abs(during.g-before.g)<3 && Math.abs(during.b-before.b)<3,
+                "Accessories must stay outside the eyelid blink node");
+        }
+        function test_activity_props_data() {
+            return Core.EyesCore.ACTIVITIES.filter(e => e.id !== "listening" && e.id !== "complete")
+                .map(e => ({tag:e.id}));
+        }
+        function propRegion() {
+            const states=Core.EyesCore.getAccentStates(eyes.pose);
+            const design=Core.EyesCore.accentDesigns.find(d => d.prop && d.depth>0 && states[d.id].opacity>.1);
+            const state=states[design.id];
+            return {x:state.x,y:state.y};
+        }
+        function test_activity_props(data) {
+            eyes.simulation.accents=true;
+            settle(data.tag);
+            const before=grabImage(eyes),region=propRegion();
+            eyes.simulation.accents=false; eyes.advance(1/60); wait(90);
+            const clear=grabImage(eyes),mask=[];
+            let differences=0;
+            for(let x=region.x-40;x<region.x+44;x+=2) for(let y=region.y-42;y<region.y+42;y+=2) {
+                const p=modelPoint(x,y),a=sample(before,p),b=sample(clear,p);
+                if(Math.abs(a.g-b.g)>10)differences++;
+                const awayFromEyes=["l","r"].every(side => {
+                    const eye=Core.EyesCore.getEyeGeometry(eyes.pose,side,0,0);
+                    return Math.abs(x-eyes.pose[side+"x"])>eye.width/2+10 ||
+                        Math.abs(y-eyes.pose[side+"y"])>eye.extent+10;
+                });
+                if(awayFromEyes&&b.g>250&&a.g<239&&a.b>a.g+10)mask.push(p);
+            }
+            verify(differences>8,data.tag+" must render its vector object above the eye scene");
+            if(data.tag!=="searching"&&data.tag!=="debugging")
+                verify(mask.length>3,data.tag+" must retain visible object edges outside the eye");
+            eyes.simulation.accents=true;
+            eyes.simulation.blink(); eyes.advance(.05); eyes.advance(.05); wait(90);
+            const during=grabImage(eyes);
+            for(const p of mask) verify(Math.abs(sample(before,p).g-sample(during,p).g)<4,
+                "Object pixels must stay outside blink squash");
         }
         function test_question_fades_through_intermediate_coverage() {
+            eyes.simulation.accents=true;
             settle("curious");
             const p=modelPoint(214.9,-88.3);
             const before=sample(grabImage(eyes),p).g;

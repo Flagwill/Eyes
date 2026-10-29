@@ -12,11 +12,15 @@ Item {
     readonly property var layout: EyeCore.EyesCore.getLayout(width, height, true)
     readonly property real modelScale: layout.scale
 
+    function hasAccents() {
+        const states = EyeCore.EyesCore.getAccentStates(pose);
+        return Object.keys(states).some(key => states[key].opacity > 0.001);
+    }
+
     function advance(delta) {
         frame = simulation.update(Math.min(delta, 0.064));
         // Only the small decorative marks use a raster texture, never the eyes.
-        if (simulation.accents && (pose.thinking + pose.happy + pose.curious + pose.focused + pose.surprised +
-                pose.sleepy + pose.confused > 0.001 || accents.hadAccents)) {
+        if (simulation.accents && (hasAccents() || accents.hadAccents)) {
             accents.requestPaint();
         }
     }
@@ -110,8 +114,7 @@ Item {
                     ctx.clearRect(0, 0, width, height);
                     ctx.translate(280, 180);
                     EyeCore.EyesCore.drawAccents(ctx, scene.pose);
-                    hadAccents = scene.pose.thinking + scene.pose.happy + scene.pose.curious + scene.pose.focused +
-                        scene.pose.surprised + scene.pose.sleepy + scene.pose.confused > 0.001;
+                    hadAccents = scene.hasAccents();
                 }
             }
         }

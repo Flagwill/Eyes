@@ -19,6 +19,7 @@ Item {
 
         function init() {
             eyes.simulation = Core.EyesCore.createSimulation({reducedMotion: true});
+            eyes.simulation.accents = false;
             eyes.advance(0);
         }
 
@@ -28,7 +29,7 @@ Item {
         }
 
         function test_emotions_data() {
-            return Core.EyesCore.EMOTIONS.map(function(emotion) {
+            return Core.EyesCore.EXPRESSIONS.map(function(emotion) {
                 return { tag: emotion.id };
             });
         }
