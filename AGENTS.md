@@ -40,7 +40,8 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `vendor/sentient-eye-engine/rig.js`：MIT 许可的 Sentient Eye Engine 五点样条内核移植；保留固定上游源码和许可证。浏览器先加载它，CMake 将它与核心合并为 QML 包，不要只安装未合并的 `eyes-core.js`。
 - `gallery.html`、`gallery.js`：使用真实引擎的八种情绪与二十种工作状态等尺寸对照。
 - `eyes.js`：浏览器生命周期和画布适配。
-- `tests/packaging.test.mjs`：旧版本入口清理、当前安装及壁纸图片保留、面板隔离回归。
+- `tests/packaging.test.mjs`：旧版本入口清理、当前安装、壁纸 origin 快照、面板隔离与可逆恢复回归。
+- `tests/desktop/wallpaper.test.mjs`：真实宿主在启动、显示、隐藏和退出时的壁纸挂载生命周期回归。
 - `tests/eyes.test.mjs`：动画连续性、表情收敛、布局、高光和注意力行为回归。
 - `app.js`、`index.html`、`style.css`：浏览器调试台和控制面板。
 - 浏览器与桌面渲染共享 `eyes-core.js`；不要复制第二套表情参数或眨眼几何。
@@ -87,7 +88,8 @@ eyes quit
 - 静态磨砂由 `ShaderEffectSource live: false` 缓存；仅图片加载、尺寸变化时刷新。隐藏后保留原始清晰壁纸，不依赖 KWin blur。
 - Qt 6 ShaderTools 在构建时生成 `build/wallpaper-ui/eye.frag.qsb`，必须随壁纸包安装。不要提交生成文件。
 - Plasma 的 QQmlEngine 会缓存旧组件，切换壁纸类型不保证加载新代码。安装器比较场景、共享模型、`.riv` 和 native plugin，变化时刷新 `plasma-plasmashell.service`；验证须在实际 Plasma 日志看到 `Eyes GPU wallpaper loaded` 和 `Eyes Rive wallpaper loaded`。
-- 壁纸守护必须同时更新配置文件和运行中的 containment。`kwriteconfig6 --notify` 只保存键值，不能可靠把已运行的 `org.kde.image` 切回 Eyes；恢复后必须通过 PlasmaShell `evaluateScript` 验证两张桌面在运行时都是 `org.eyes.wallpaper`。状态桥客户端须在 URL 就绪后激活，并在 `Open` 后主动请求快照。
+- 壁纸只在 Eyes 显示期间临时挂载：启动先恢复崩溃或旧版本残留，`shownChanged=true` 才保存原插件与完整壁纸配置并切到 Eyes，隐藏或 `complete` 淡出后恢复，退出前阻塞式恢复。状态文件默认 `$XDG_STATE_HOME/eyes/wallpaper-origin.json`（`0600`），只记录 formfactor=0 的桌面 containment，不记录或修改面板。安装器不得主动挂载 Eyes；用户显示期间主动换壁纸时新选择优先。壁纸包 URL 必须原样保留，由 `main.qml` 的 Plasma `DayNightWallpaper` 按当前颜色方案解析 `images` / `images_dark`，不能在配置文件里冻结为亮色图片。参见 ADR-013。
+- 挂载和恢复必须同时更新配置文件与运行中的 containment。`kwriteconfig6 --notify` 只保存键值，不能可靠切换已运行的插件，因此成功后还要通过 PlasmaShell `evaluateScript` 按运行中的 `desktop.id` 应用；状态只能在文件和运行时都成功后清除。状态桥客户端须在 URL 就绪后激活，并在 `Open` 后主动请求快照。
 - 可临时设置壁纸配置 `DebugPerformance=true`，日志每 5 秒报告 `EYES_PERF GPU`。不要只凭独立测试窗口的帧率宣布桌面已修复。完成测量后关闭日志。
 - 常驻默认 `AnimationFps=60`（20–60）。`AnimationClock.qml` 仍用 FrameAnimation 累计真实帧间隔，隐藏后停钟且不追补隐藏时间。`cmake/RiveScheduling.cmake` 让 Rive 仅随模型更新，在当前帧 prepare 阶段绘制并缓存向量和 SMAA；不要恢复原生自刷新或每帧反向输入轮询。淡出后 Loader 卸载眼睛场景以释放渲染目标；宿主继续待命。见 ADR-008。
 - WebSocket 桥仅监听 `127.0.0.1:38271`。断开后必须隐藏画面，避免后台停止后仍残留最后一帧眼睛。

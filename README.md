@@ -166,6 +166,7 @@ tests/codex-hooks.test.mjs      Codex 生命周期映射、用户安装与静默
 integrations/codex/             用户级 Codex Desktop 生命周期接入源
 docs/MOTION.md                  眼神表演、高光和注意力动作约定
 docs/CODEX.md                   Codex hooks 映射、信任与限制
+docs/decisions/                 架构决策与生命周期约定
 docs/gallery/                   开发过程视觉快照
 AGENTS.md                       仓库记忆与后续维护约束
 ```
@@ -210,4 +211,4 @@ npm run desktop:build
 
 产品名称统一为 **Eyes**。命令为 `eyes`，桌面后台为 `eyes-desktop`，浏览器接口为 `window.eyes`；可用 `EYES_DESKTOP_BIN` 指定后台程序，`EYES_INSTALL_PREFIX` 指定安装位置。桌面壁纸插件 ID 为 `org.eyes.wallpaper`，D-Bus 服务和接口为 `org.eyes.Desktop`，光标脚本 ID 为 `eyes-cursor`。
 
-重新运行 `npm run desktop:install` 会保留壁纸图片、停止旧后台、卸载旧光标脚本，并清理旧命令、插件和重复自启动项。升级后请将外部 harness 配置中的旧命令与浏览器调用更新为上面的接口；不保留旧名称别名。命名与清晰轮廓的决策见 [ADR-002](docs/decisions/002-eyes-identity-and-crisp-contours.md)。
+重新运行 `npm run desktop:install` 会保留壁纸图片、停止旧后台、卸载旧光标脚本，并清理旧命令、插件和旧自启动项。升级后请将外部 harness 配置中的旧命令与浏览器调用更新为上面的接口；不保留旧名称别名。默认按需启动与应用菜单注册见 [ADR-012](docs/decisions/012-opt-in-application-startup.md)，命名与清晰轮廓的决策见 [ADR-002](docs/decisions/002-eyes-identity-and-crisp-contours.md)。

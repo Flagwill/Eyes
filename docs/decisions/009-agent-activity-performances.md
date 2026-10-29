@@ -121,18 +121,14 @@ entry; ADR-012 later changed the default to opt-in startup. These checks
 confirm rendering and lifecycle behavior; visual recognition remains a human
 judgment.
 
-On 2026-10-29, a persistent wallpaper guard was added to `eyes-desktop`.
-Plasma theme tools and wallpaper settings may replace `org.eyes.wallpaper`
-with `org.kde.image` or another wallpaper plugin. The guard watches the desktop
-containment configuration, debounces writes, copies the new image, color and
-fill mode into Eyes, and restores the Eyes plugin in both persistent config and
-the live containment. `kwriteconfig6 --notify` alone is insufficient because
-an already-running Plasma containment can retain its old plugin while disk
-configuration says Eyes. The guard therefore also calls PlasmaShell's
-`evaluateScript`. It is idempotent and leaves panels and the animation frame
-limit untouched. Package wallpapers are resolved to a concrete bundled image;
-slide paths and solid colors remain usable. The host also retries its socket
-and bridge after a transient startup race, and the user service restarts it
-after an abnormal exit. The QML bridge activates only after its URL is ready and
-requests a fresh snapshot when the socket reaches `Open`, covering both initial
-state delivery races and session-manager restarts.
+An earlier 2026-10-29 implementation used a persistent wallpaper guard that
+kept forcing `org.eyes.wallpaper` back after Plasma theme tools changed the
+containment. That behavior made launching Eyes replace the person's wallpaper
+permanently and is superseded by ADR-013. The host now restores by default and
+only mounts Eyes while the reveal is visible; the live containment is still
+updated through PlasmaShell because `kwriteconfig6 --notify` alone cannot
+switch an already-running plugin. The host also retries its socket and bridge
+after a transient startup race, and the user service restarts it after an
+abnormal exit. The QML bridge activates only after its URL is ready and requests
+a fresh snapshot when the socket reaches `Open`, covering both initial state
+delivery races and session-manager restarts.

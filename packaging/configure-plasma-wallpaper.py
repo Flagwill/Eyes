@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep Plasma desktop wallpapers mounted in the Eyes wallpaper plugin."""
+"""Temporarily mount Eyes over Plasma desktops and restore the exact wallpaper."""
 
 from __future__ import annotations
 
@@ -11,18 +11,39 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 
 DESKTOP_PLUGIN = "org.kde.plasma.folder"
 WALLPAPER_PLUGIN = "org.eyes.wallpaper"
+LEGACY_WALLPAPER_PLUGINS = {"com.mio.Eyes"}
 DEFAULT_COLOR = "#d8d2df"
 DEFAULT_FILL_MODE = "2"
-RUNTIME_SCRIPT = (
-    'desktops().forEach(function(desktop) { '
-    'desktop.wallpaperPlugin = "org.eyes.wallpaper"; });'
-)
+STATE_VERSION = 1
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
+
+
+class StateError(RuntimeError):
+    pass
+
+
+def default_config_path() -> Path:
+    return (
+        Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        / "plasma-org.kde.plasma.desktop-appletsrc"
+    )
+
+
+def default_state_path() -> Path:
+    return (
+        Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+        / "eyes"
+        / "wallpaper-origin.json"
+    )
 
 
 def local_image_path(value: str) -> Path | None:
@@ -38,7 +59,7 @@ def local_image_path(value: str) -> Path | None:
 
 
 def resolve_image(value: str) -> str:
-    """Resolve Plasma's wallpaper package identifiers for a plain Image."""
+    """Resolve Plasma wallpaper package identifiers to one concrete image."""
     value = value.strip()
     direct = local_image_path(value)
     if direct is not None:
@@ -63,13 +84,11 @@ def resolve_image(value: str) -> str:
     if not path.is_dir():
         return value
 
-    # Plasma package wallpapers commonly expose several size and dark-mode
-    # variants. Let QML handle a light/dark suffix, but feed it a single file.
     images = sorted(
         item
         for item in (path / "contents").glob("images/*")
         if item.is_file()
-        and item.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".avif"}
+        and item.suffix.lower() in IMAGE_EXTENSIONS
     )
     if not images:
         return value
@@ -78,7 +97,7 @@ def resolve_image(value: str) -> str:
 
 
 def first_image_in_slide_paths(value: str) -> str:
-    """Return a concrete image from the list syntax Plasma stores."""
+    """Return a concrete image from Plasma's list syntax."""
     for match in re.findall(r"(?:file://)?/[^,\[\]\"']+", value):
         candidate = match.strip()
         direct = resolve_image(candidate)
@@ -92,18 +111,25 @@ def first_image_in_slide_paths(value: str) -> str:
         folder = Path(folder_value)
         if folder.is_dir():
             for item in sorted(folder.rglob("*")):
-                if item.is_file() and item.suffix.lower() in {
-                    ".jpg",
-                    ".jpeg",
-                    ".png",
-                    ".webp",
-                    ".avif",
-                }:
+                if item.is_file() and item.suffix.lower() in IMAGE_EXTENSIONS:
                     return item.as_uri()
     return ""
 
 
-def containment_sections(parser: configparser.RawConfigParser) -> list[tuple[str, str]]:
+def read_config(path: Path) -> configparser.RawConfigParser:
+    config = configparser.RawConfigParser(
+        interpolation=None,
+        strict=False,
+        delimiters=("=",),
+    )
+    config.optionxform = str
+    config.read(path, encoding="utf-8")
+    return config
+
+
+def containment_sections(
+    parser: configparser.RawConfigParser,
+) -> list[tuple[str, str]]:
     result: list[tuple[str, str]] = []
     for section in parser.sections():
         match = re.fullmatch(r"Containments\]\[(\d+)", section)
@@ -117,35 +143,232 @@ def containment_sections(parser: configparser.RawConfigParser) -> list[tuple[str
     return result
 
 
-def image_candidates(
+def wallpaper_config(
     parser: configparser.RawConfigParser,
-    base: str,
-) -> dict[str, str]:
-    prefix = f"{base}][Wallpaper]["
-    suffix = "][General"
-    candidates: dict[str, str] = {}
+    containment_id: str,
+) -> dict[str, dict[str, dict[str, str]]]:
+    """Snapshot every Wallpaper plugin group for one desktop containment."""
+    prefix = f"Containments][{containment_id}][Wallpaper]["
+    result: dict[str, dict[str, dict[str, str]]] = {}
     for section in parser.sections():
-        if not section.startswith(prefix) or not section.endswith(suffix):
+        if not section.startswith(prefix):
             continue
-        plugin = section[len(prefix) : -len(suffix)]
-        image = parser.get(section, "Image", fallback="").strip()
-        if image:
-            candidates[plugin] = image
-    return candidates
-
-
-def wallpaper_sections(
-    parser: configparser.RawConfigParser,
-    base: str,
-) -> dict[str, configparser.SectionProxy]:
-    prefix = f"{base}][Wallpaper]["
-    suffix = "][General"
-    result: dict[str, configparser.SectionProxy] = {}
-    for section in parser.sections():
-        if section.startswith(prefix) and section.endswith(suffix):
-            plugin = section[len(prefix) : -len(suffix)]
-            result[plugin] = parser[section]
+        parts = section[len(prefix) :].split("][")
+        if len(parts) < 2:
+            continue
+        plugin, subgroup = parts[0], "][".join(parts[1:])
+        result.setdefault(plugin, {})[subgroup] = {
+            key: value for key, value in parser.items(section, raw=True)
+        }
     return result
+
+
+def general_group(
+    groups: dict[str, dict[str, dict[str, str]]],
+    plugin: str,
+) -> dict[str, str]:
+    return groups.get(plugin, {}).get("General", {})
+
+
+def group_image(group: dict[str, str]) -> str:
+    raw = group.get("Image", "").strip()
+    image = resolve_image(raw)
+    parsed = urlparse(image)
+    if (
+        image
+        and (
+            local_image_path(image) is not None
+            or parsed.scheme
+            or Path(image).suffix.lower() in IMAGE_EXTENSIONS
+        )
+    ):
+        return image
+    return first_image_in_slide_paths(group.get("SlidePaths", ""))
+
+
+def source_image(group: dict[str, str]) -> str:
+    """Keep Plasma package URLs intact so dark/light selection stays dynamic."""
+    raw = group.get("Image", "").strip()
+    if raw and raw != "null":
+        return raw
+    return first_image_in_slide_paths(group.get("SlidePaths", ""))
+
+
+def origin_entry(
+    parser: configparser.RawConfigParser,
+    containment_id: str,
+    plugin: str,
+    *,
+    recovered: bool = False,
+) -> dict[str, Any]:
+    groups = {
+        plugin: sections
+        for plugin, sections in wallpaper_config(parser, containment_id).items()
+        if plugin != WALLPAPER_PLUGIN and plugin not in LEGACY_WALLPAPER_PLUGINS
+    }
+    return {
+        "plugin": plugin,
+        "wallpaper": groups,
+        "recovered": recovered,
+    }
+
+
+def recover_origin(
+    parser: configparser.RawConfigParser,
+    containment_id: str,
+) -> dict[str, Any] | None:
+    """Infer the wallpaper hidden by releases that mounted Eyes permanently."""
+    groups = wallpaper_config(parser, containment_id)
+    eyes = general_group(groups, WALLPAPER_PLUGIN)
+    eyes_image = group_image(eyes)
+    eyes_color = eyes.get("Color", "").strip()
+    eyes_fill = eyes.get("FillMode", "").strip()
+
+    scored: list[tuple[int, str]] = []
+    for plugin, sections in groups.items():
+        if plugin == WALLPAPER_PLUGIN or plugin in LEGACY_WALLPAPER_PLUGINS:
+            continue
+        general = sections.get("General", {})
+        score = 0
+        if plugin == "org.kde.image":
+            score += 20
+        image = group_image(general)
+        if eyes_image and image:
+            score += 100 if image == eyes_image else -20
+        if eyes_color and general.get("Color", "").strip() == eyes_color:
+            score += 30
+        if eyes_fill and general.get("FillMode", "").strip() == eyes_fill:
+            score += 10
+        scored.append((score, plugin))
+
+    if not scored:
+        return None
+    scored.sort(reverse=True)
+    if scored[0][0] < 20 or (
+        len(scored) > 1 and scored[0][0] == scored[1][0]
+    ):
+        return None
+    return origin_entry(
+        parser, containment_id, scored[0][1], recovered=True
+    )
+
+
+def read_state(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"version": STATE_VERSION, "containments": {}}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise StateError(
+            f"Eyes: cannot read wallpaper origin state: {error}"
+        ) from error
+    if (
+        not isinstance(payload, dict)
+        or payload.get("version") != STATE_VERSION
+        or not isinstance(payload.get("containments"), dict)
+    ):
+        raise StateError("Eyes: wallpaper origin state has an unsupported format")
+    for containment_id, entry in payload["containments"].items():
+        if (
+            not isinstance(containment_id, str)
+            or not containment_id.isdigit()
+            or not isinstance(entry, dict)
+            or not isinstance(entry.get("plugin"), str)
+            or not entry["plugin"]
+            or entry["plugin"] == WALLPAPER_PLUGIN
+            or not isinstance(entry.get("wallpaper"), dict)
+        ):
+            raise StateError(
+                "Eyes: wallpaper origin state contains an invalid containment"
+            )
+    return payload
+
+
+def remove_state(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    try:
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except OSError:
+        pass
+
+
+def write_state(path: Path, containments: dict[str, Any]) -> None:
+    if not containments:
+        remove_state(path)
+        return
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
+    payload = {
+        "version": STATE_VERSION,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "containments": containments,
+    }
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(
+                payload,
+                handle,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        path.chmod(0o600)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def desired_eyes_values(
+    origin: dict[str, Any],
+    current_eyes: dict[str, str],
+) -> dict[str, str]:
+    groups = origin.get("wallpaper", {})
+    active = general_group(groups, origin["plugin"])
+    image = source_image(active)
+    color = active.get("Color", "").strip()
+    fill_mode = active.get("FillMode", "").strip()
+
+    if not image:
+        for plugin, sections in groups.items():
+            if plugin == WALLPAPER_PLUGIN:
+                continue
+            image = source_image(sections.get("General", {}))
+            if image:
+                break
+    if not image:
+        image = source_image(current_eyes)
+    if not color:
+        color = current_eyes.get("Color", "").strip()
+    if not fill_mode:
+        fill_mode = current_eyes.get("FillMode", "").strip()
+    return {
+        "Image": image,
+        "Color": color or DEFAULT_COLOR,
+        "FillMode": fill_mode or DEFAULT_FILL_MODE,
+    }
 
 
 def write_value(
@@ -156,19 +379,75 @@ def write_value(
     value: str,
     *,
     dry_run: bool,
-) -> None:
+) -> list[str]:
     args = [executable, "--file", str(config_path)]
     for item in group:
         args.extend(["--group", item])
     args.extend(["--key", key, "--notify", value])
     if dry_run:
         print("would run:", " ".join(args), file=sys.stderr)
-        return
-    subprocess.run(args, check=True)
+    else:
+        subprocess.run(args, check=True)
+    return args
 
 
-def activate_runtime(*, dry_run: bool) -> tuple[bool, list[str], str]:
-    """Switch the live Plasma containment after its config has been migrated."""
+def restore_containment(
+    executable: str,
+    config_path: Path,
+    containment_id: str,
+    entry: dict[str, Any],
+    *,
+    dry_run: bool,
+) -> list[list[str]]:
+    actions: list[list[str]] = []
+    common = ["Containments", containment_id]
+    for plugin, subgroups in entry["wallpaper"].items():
+        if not isinstance(subgroups, dict) or plugin == WALLPAPER_PLUGIN:
+            continue
+        for subgroup, values in subgroups.items():
+            if not isinstance(values, dict):
+                continue
+            group = common + ["Wallpaper", plugin] + subgroup.split("][")
+            for key, value in values.items():
+                actions.append(
+                    write_value(
+                        executable,
+                        config_path,
+                        group,
+                        key,
+                        str(value),
+                        dry_run=dry_run,
+                    )
+                )
+    actions.append(
+        write_value(
+            executable,
+            config_path,
+            common,
+            "wallpaperplugin",
+            entry["plugin"],
+            dry_run=dry_run,
+        )
+    )
+    return actions
+
+
+def runtime_script(plugins: dict[str, str]) -> str:
+    encoded = json.dumps(plugins, ensure_ascii=True, separators=(",", ":"))
+    return (
+        f"const targets = {encoded};"
+        "desktops().forEach(function(desktop) {"
+        "const plugin = targets[String(desktop.id)];"
+        "if (plugin) desktop.wallpaperPlugin = plugin;"
+        "});"
+    )
+
+
+def activate_runtime(
+    plugins: dict[str, str],
+    *,
+    dry_run: bool,
+) -> tuple[bool, list[str], str]:
     executable = next(
         (
             found
@@ -182,7 +461,7 @@ def activate_runtime(*, dry_run: bool) -> tuple[bool, list[str], str]:
         "org.kde.plasmashell",
         "/PlasmaShell",
         "org.kde.PlasmaShell.evaluateScript",
-        RUNTIME_SCRIPT,
+        runtime_script(plugins),
     ]
     if dry_run:
         print("would run:", " ".join(command), file=sys.stderr)
@@ -201,279 +480,346 @@ def activate_runtime(*, dry_run: bool) -> tuple[bool, list[str], str]:
     )
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=Path(
-            os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
-        )
-        / "plasma-org.kde.plasma.desktop-appletsrc",
-    )
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print a machine-readable result without changing its meaning.",
-    )
-    parser.add_argument(
-        "--activate-runtime",
-        action="store_true",
-        help="Switch already-running Plasma desktops to the Eyes wallpaper plugin.",
-    )
-    args = parser.parse_args()
-
-    config_path = args.config.expanduser()
-    if not config_path.is_file():
-        message = f"Eyes: Plasma desktop config not found: {config_path}"
-        if args.json:
-            print(json.dumps({"ok": False, "error": message}, ensure_ascii=False))
-        else:
-            print(message, file=sys.stderr)
-        return 1
-
-    config = configparser.RawConfigParser(
-        interpolation=None,
-        strict=False,
-        delimiters=("=",),
-    )
-    config.optionxform = str
-    config.read(config_path, encoding="utf-8")
-
-    desktops = containment_sections(config)
-    if not desktops:
-        message = (
-            "Eyes: no Plasma desktop containment was found; "
-            "panels were left untouched"
-        )
-        if args.json:
-            print(json.dumps({"ok": False, "error": message}, ensure_ascii=False))
-        else:
-            print(message, file=sys.stderr)
-        return 1
-
-    fallback_image = ""
-    for _, section in desktops:
-        candidates = image_candidates(config, section)
-        for image in candidates.values():
-            if image:
-                fallback_image = resolve_image(image)
-                break
-        if fallback_image:
-            break
-
-    executable = shutil.which("kwriteconfig6")
-    if executable is None and not args.dry_run:
-        message = "Eyes: kwriteconfig6 is required to configure Plasma"
-        if args.json:
-            print(json.dumps({"ok": False, "error": message}, ensure_ascii=False))
-        else:
-            print(message, file=sys.stderr)
-        return 1
-
+def mount(
+    args: argparse.Namespace,
+    config: configparser.RawConfigParser,
+    desktops: list[tuple[str, str]],
+    state: dict[str, Any],
+    executable: str,
+) -> tuple[dict[str, Any], list[str], list[list[str]], list[dict[str, Any]]]:
     changed: list[str] = []
-    pending: list[str] = []
     actions: list[list[str]] = []
-    containments: list[dict[str, object]] = []
+    containments: list[dict[str, Any]] = []
+    current_state = state["containments"]
+
     for containment_id, section in desktops:
-        old_plugin = config.get(section, "wallpaperplugin", fallback="").strip()
-        candidates = image_candidates(config, section)
-        sections = wallpaper_sections(config, section)
-        eyes_config = sections.get(WALLPAPER_PLUGIN)
-        active_config = sections.get(old_plugin)
+        current_plugin = config.get(
+            section, "wallpaperplugin", fallback=""
+        ).strip()
+        groups = wallpaper_config(config, containment_id)
+        current_eyes = general_group(groups, WALLPAPER_PLUGIN)
+        origin = current_state.get(containment_id)
 
-        # A wallpaper switch writes the active plugin's image. Prefer that
-        # fresh value over Eyes' previous copy, otherwise every theme or
-        # wallpaper change would be silently reverted to the stale wallpaper.
-        image = ""
-        color = ""
-        fill_mode = ""
-        use_active_config = (
-            active_config is not None and old_plugin != WALLPAPER_PLUGIN
-        )
-        color_only = False
-        if use_active_config:
-            image = resolve_image(
-                active_config.get("Image", fallback="").strip()
-            )
-            color = active_config.get("Color", fallback="").strip()
-            fill_mode = active_config.get("FillMode", fallback="").strip()
-            if not image:
-                image = first_image_in_slide_paths(
-                    active_config.get("SlidePaths", fallback="").strip()
+        if current_plugin != WALLPAPER_PLUGIN:
+            if current_plugin in LEGACY_WALLPAPER_PLUGINS:
+                origin = recover_origin(config, containment_id)
+            else:
+                origin = origin_entry(
+                    config, containment_id, current_plugin
                 )
-            raw_image = active_config.get("Image", fallback="").strip()
-            color_only = (
-                old_plugin in {"org.kde.color", "org.kde.image"}
-                and not raw_image
-                and bool(color)
-            )
-
-        if not color_only and not image and eyes_config is not None:
-            image = resolve_image(
-                eyes_config.get("Image", fallback="").strip()
-            )
-        if not color and eyes_config is not None:
-            color = eyes_config.get("Color", fallback="").strip()
-        if not fill_mode and eyes_config is not None:
-            fill_mode = eyes_config.get("FillMode", fallback="").strip()
-        if not color_only and not image and candidates:
-            image = resolve_image(next(iter(candidates.values())))
-        if not color_only and not image:
-            image = fallback_image
-        if not image and not color:
-            pending.append(containment_id)
-            containments.append(
-                {
-                    "id": containment_id,
-                    "plugin": old_plugin,
-                    "changed": False,
-                    "pending": True,
-                }
-            )
-            continue
-
-        color = color or DEFAULT_COLOR
-        fill_mode = fill_mode or DEFAULT_FILL_MODE
-        common = ["Containments", containment_id]
-        wallpaper_group = common + ["Wallpaper", WALLPAPER_PLUGIN, "General"]
-        desired = (
-            ("Image", image),
-            ("Color", color),
-            ("FillMode", fill_mode),
-        )
-        containment_changed = False
-        for key, value in desired:
-            current = (
-                eyes_config.get(key, fallback="").strip()
-                if eyes_config is not None
-                else ""
-            )
-            if current == value:
+            if origin is None:
+                containments.append(
+                    {
+                        "id": containment_id,
+                        "plugin": current_plugin,
+                        "changed": False,
+                        "pending": True,
+                    }
+                )
                 continue
-            call = [executable or "kwriteconfig6", "--file", str(config_path)]
-            for item in wallpaper_group:
-                call.extend(["--group", item])
-            call.extend(["--key", key, "--notify", value])
-            actions.append(call)
-            write_value(
-                executable or "kwriteconfig6",
-                config_path,
-                wallpaper_group,
-                key,
-                value,
-                dry_run=args.dry_run,
+            current_state[containment_id] = origin
+        elif origin is None:
+            origin = recover_origin(config, containment_id)
+            if origin is not None:
+                current_state[containment_id] = origin
+
+        desired = desired_eyes_values(
+            origin or {"plugin": "", "wallpaper": {}}, current_eyes
+        )
+        common = ["Containments", containment_id]
+        eyes_group = common + ["Wallpaper", WALLPAPER_PLUGIN, "General"]
+        containment_changed = False
+        for key, value in desired.items():
+            if current_eyes.get(key, "").strip() == value:
+                continue
+            actions.append(
+                write_value(
+                    executable,
+                    args.config,
+                    eyes_group,
+                    key,
+                    value,
+                    dry_run=args.dry_run,
+                )
             )
             containment_changed = True
-
-        if old_plugin != WALLPAPER_PLUGIN:
-            call = [executable or "kwriteconfig6", "--file", str(config_path)]
-            for item in common:
-                call.extend(["--group", item])
-            call.extend(
-                ["--key", "wallpaperplugin", "--notify", WALLPAPER_PLUGIN]
-            )
-            actions.append(call)
-            write_value(
-                executable or "kwriteconfig6",
-                config_path,
-                common,
-                "wallpaperplugin",
-                WALLPAPER_PLUGIN,
-                dry_run=args.dry_run,
+        if current_plugin != WALLPAPER_PLUGIN:
+            actions.append(
+                write_value(
+                    executable,
+                    args.config,
+                    common,
+                    "wallpaperplugin",
+                    WALLPAPER_PLUGIN,
+                    dry_run=args.dry_run,
+                )
             )
             containment_changed = True
-
         if containment_changed:
             changed.append(containment_id)
         containments.append(
             {
                 "id": containment_id,
-                "plugin": old_plugin,
+                "plugin": origin["plugin"] if origin else current_plugin,
                 "changed": containment_changed,
-                "pending": False,
+                "pending": origin is None and current_plugin == WALLPAPER_PLUGIN,
             }
         )
+    return state, changed, actions, containments
 
-    if not changed and len(pending) == len(desktops):
-        message = "Eyes: no desktop wallpaper could be preserved yet"
-        if args.json:
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "changed": False,
-                        "pending": pending,
-                        "containments": containments,
-                        "error": message,
-                    },
-                    ensure_ascii=False,
+
+def restore(
+    args: argparse.Namespace,
+    config: configparser.RawConfigParser,
+    desktops: list[tuple[str, str]],
+    state: dict[str, Any],
+    executable: str,
+    *,
+    recover_legacy: bool,
+) -> tuple[
+    dict[str, Any],
+    list[str],
+    list[list[str]],
+    list[dict[str, Any]],
+    dict[str, str],
+]:
+    changed: list[str] = []
+    actions: list[list[str]] = []
+    containments: list[dict[str, Any]] = []
+    runtime_plugins: dict[str, str] = {}
+    desktop_by_id = dict(desktops)
+    current_state = state["containments"]
+
+    for containment_id in list(current_state):
+        if containment_id not in desktop_by_id:
+            del current_state[containment_id]
+
+    if recover_legacy:
+        for containment_id, section in desktops:
+            if containment_id in current_state:
+                continue
+            plugin = config.get(
+                section, "wallpaperplugin", fallback=""
+            ).strip()
+            if plugin != WALLPAPER_PLUGIN:
+                continue
+            recovered = recover_origin(config, containment_id)
+            if recovered is not None:
+                current_state[containment_id] = recovered
+
+    for containment_id, section in desktops:
+        entry = current_state.get(containment_id)
+        if entry is None:
+            continue
+        current_plugin = config.get(
+            section, "wallpaperplugin", fallback=""
+        ).strip()
+        if current_plugin == WALLPAPER_PLUGIN:
+            actions.extend(
+                restore_containment(
+                    executable,
+                    args.config,
+                    containment_id,
+                    entry,
+                    dry_run=args.dry_run,
                 )
             )
+            changed.append(containment_id)
+            runtime_plugins[containment_id] = entry["plugin"]
+        elif current_plugin == entry["plugin"]:
+            runtime_plugins[containment_id] = entry["plugin"]
         else:
-            print(message, file=sys.stderr)
+            # The person chose a different wallpaper while Eyes was mounted.
+            # Their current choice wins over the saved pre-mount snapshot.
+            del current_state[containment_id]
+            continue
+        containments.append(
+            {
+                "id": containment_id,
+                "plugin": entry["plugin"],
+                "changed": current_plugin == WALLPAPER_PLUGIN,
+                "recovered": entry.get("recovered", False),
+            }
+        )
+    return state, changed, actions, containments, runtime_plugins
+
+
+def emit(
+    args: argparse.Namespace,
+    payload: dict[str, Any],
+) -> None:
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+    elif payload.get("error"):
+        print(payload["error"], file=sys.stderr)
+    elif payload.get("changed"):
+        print(
+            "Eyes: "
+            + args.mode
+            + " desktop containments: "
+            + ", ".join(payload.get("changedIds", []))
+        )
+    else:
+        print(f"Eyes: wallpaper {args.mode} is already up to date")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, default=default_config_path())
+    parser.add_argument("--state-file", type=Path, default=default_state_path())
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--activate-runtime",
+        action="store_true",
+        help="Apply the plugin change to already-running Plasma desktops.",
+    )
+    parser.add_argument(
+        "--recover-legacy",
+        action="store_true",
+        help="Infer and restore desktops left permanently on Eyes by old releases.",
+    )
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--mount", dest="mode", action="store_const", const="mount")
+    modes.add_argument(
+        "--restore", dest="mode", action="store_const", const="restore"
+    )
+    parser.set_defaults(mode="mount")
+    args = parser.parse_args()
+    if args.recover_legacy:
+        args.mode = "restore"
+
+    args.config = args.config.expanduser()
+    args.state_file = args.state_file.expanduser()
+    if not args.config.is_file():
+        emit(
+            args,
+            {
+                "ok": False,
+                "error": f"Eyes: Plasma desktop config not found: {args.config}",
+            },
+        )
         return 1
 
-    if args.activate_runtime:
+    try:
+        config = read_config(args.config)
+        state = read_state(args.state_file)
+    except StateError as error:
+        emit(args, {"ok": False, "error": str(error)})
+        return 1
+
+    desktops = containment_sections(config)
+    if not desktops:
+        emit(
+            args,
+            {
+                "ok": False,
+                "error": (
+                    "Eyes: no Plasma desktop containment was found; "
+                    "panels were left untouched"
+                ),
+            },
+        )
+        return 1
+
+    executable = shutil.which("kwriteconfig6")
+    if executable is None and not args.dry_run:
+        emit(
+            args,
+            {
+                "ok": False,
+                "error": "Eyes: kwriteconfig6 is required to configure Plasma",
+            },
+        )
+        return 1
+
+    runtime_plugins: dict[str, str] = {}
+    try:
+        if args.mode == "mount":
+            state, changed, actions, containments = mount(
+                args, config, desktops, state, executable or "kwriteconfig6"
+            )
+            runtime_plugins = {
+                containment_id: WALLPAPER_PLUGIN
+                for containment_id, _ in desktops
+            }
+            if not args.dry_run:
+                # Persist the origin before changing any live or saved plugin.
+                write_state(args.state_file, state["containments"])
+        else:
+            state, changed, actions, containments, runtime_plugins = restore(
+                args,
+                config,
+                desktops,
+                state,
+                executable or "kwriteconfig6",
+                recover_legacy=args.recover_legacy,
+            )
+    except (OSError, subprocess.CalledProcessError) as error:
+        emit(
+            args,
+            {
+                "ok": False,
+                "mode": args.mode,
+                "error": f"Eyes: {args.mode} failed: {error}",
+            },
+        )
+        return 1
+
+    if args.activate_runtime and runtime_plugins:
         runtime_ok, runtime_action, runtime_error = activate_runtime(
-            dry_run=args.dry_run
+            runtime_plugins, dry_run=args.dry_run
         )
         if runtime_action:
             actions.append(runtime_action)
         if not runtime_ok:
-            pending.append("runtime")
-            if args.json:
-                print(
-                    json.dumps(
-                        {
-                            "ok": False,
-                            "changed": bool(changed),
-                            "pending": pending,
-                            "containments": containments,
-                            "actions": actions,
-                            "error": runtime_error,
-                        },
-                        ensure_ascii=False,
-                    )
-                )
-            else:
-                print(runtime_error, file=sys.stderr)
-            return 1
-
-    if not changed:
-        if args.json:
-            print(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "changed": False,
-                        "pending": pending,
-                        "containments": containments,
-                        "actions": actions,
-                    },
-                    ensure_ascii=False,
-                )
-            )
-        else:
-            print("Eyes: desktop wallpapers are already mounted")
-        return 0
-
-    if args.json:
-        print(
-            json.dumps(
+            emit(
+                args,
                 {
-                    "ok": True,
-                    "changed": True,
-                    "pending": pending,
+                    "ok": False,
+                    "mode": args.mode,
+                    "changed": bool(changed),
+                    "changedIds": changed,
+                    "pending": ["runtime"],
                     "containments": containments,
                     "actions": actions,
+                    "error": runtime_error,
                 },
-                ensure_ascii=False,
             )
-        )
-    else:
-        print(f"Eyes: configured desktop containments: {', '.join(changed)}")
+            return 1
+
+    if args.mode == "restore" and not args.dry_run:
+        if args.activate_runtime:
+            # The saved origin is complete only after both the file and the
+            # running Plasma containment have accepted it.
+            for containment_id in runtime_plugins:
+                state["containments"].pop(containment_id, None)
+        try:
+            write_state(args.state_file, state["containments"])
+        except OSError as error:
+            emit(
+                args,
+                {
+                    "ok": False,
+                    "error": f"Eyes: cannot update wallpaper origin state: {error}",
+                },
+            )
+            return 1
+
+    emit(
+        args,
+        {
+            "ok": True,
+            "mode": args.mode,
+            "changed": bool(changed),
+            "changedIds": changed,
+            "pending": [
+                item["id"] for item in containments if item.get("pending")
+            ],
+            "containments": containments,
+            "actions": actions,
+        },
+    )
     return 0
 
 

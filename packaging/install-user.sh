@@ -31,9 +31,12 @@ if [[ -f "$wallpaper_ui/main.qml" ]]; then
 fi
 
 # Stop both generations before replacing binaries or taking the bridge port.
+# Ask the current Eyes host to restore the wallpaper and exit cleanly first;
+# the service stop below is only a timeout fallback for an unresponsive host.
 source "$project_root/packaging/migrate-legacy-install.sh"
 stop_legacy_install
-if [[ -x "$install_prefix/bin/eyes" ]]; then
+if pgrep -u "$UID" -x eyes-desktop >/dev/null 2>&1 \
+    && [[ -x "$install_prefix/bin/eyes" ]]; then
     "$install_prefix/bin/eyes" quit >/dev/null 2>&1 || true
 fi
 for _ in {1..20}; do
@@ -42,6 +45,10 @@ for _ in {1..20}; do
     fi
     sleep 0.1
 done
+if pgrep -u "$UID" -x eyes-desktop >/dev/null 2>&1 \
+    && command -v systemctl >/dev/null 2>&1; then
+    systemctl --user stop eyes-desktop.service >/dev/null 2>&1 || true
+fi
 if pgrep -u "$UID" -x eyes-desktop >/dev/null 2>&1; then
     pkill -TERM -u "$UID" -x eyes-desktop 2>/dev/null || true
 fi
@@ -85,11 +92,15 @@ chmod 0644 "$application_entry"
 # Codex project. The installer preserves unrelated hook definitions.
 python3 "$project_root/packaging/install-codex-hooks.py"
 
-# Preserve each desktop's current image and move only the desktop
-# containment to the Eyes wallpaper plugin. Plasma panels are ignored.
+# Installation must leave the person's wallpaper untouched. Restore any
+# temporary mount left by a crash and repair the permanent mount written by
+# earlier releases, without selecting Eyes on the desktop.
 desktop_config="${XDG_CONFIG_HOME:-$HOME/.config}/plasma-org.kde.plasma.desktop-appletsrc"
-python3 "$project_root/packaging/configure-plasma-wallpaper.py" \
-    --config "$desktop_config"
+if [[ -f "$desktop_config" ]] && command -v kwriteconfig6 >/dev/null 2>&1; then
+    python3 "$project_root/packaging/configure-plasma-wallpaper.py" \
+        --config "$desktop_config" --restore --recover-legacy \
+        --activate-runtime --json >/dev/null
+fi
 
 # Startup is opt-in. Remove entries written by earlier releases so neither the
 # session manager nor the user service can launch Eyes at login.
@@ -150,18 +161,8 @@ if command -v gdbus >/dev/null 2>&1 \
     fi
 fi
 
-image_script="desktops().forEach(function(d) { d.wallpaperPlugin = 'org.kde.image'; });"
-eyes_script="desktops().forEach(function(d) { d.wallpaperPlugin = 'org.eyes.wallpaper'; });"
 if command -v qdbus6 >/dev/null 2>&1 \
     && qdbus6 org.kde.plasmashell >/dev/null 2>&1; then
-    qdbus6 org.kde.plasmashell /PlasmaShell \
-        org.kde.PlasmaShell.evaluateScript "$image_script" \
-        >/dev/null 2>&1 || true
-    sleep 0.3
-    qdbus6 org.kde.plasmashell /PlasmaShell \
-        org.kde.PlasmaShell.evaluateScript "$eyes_script" \
-        >/dev/null 2>&1 || true
-    sleep 0.5
     # Switching wallpaper plugins does not clear QQmlEngine's component cache.
     if [[ "$refresh_plasma" == true ]]; then
         if systemctl --user is-active --quiet plasma-plasmashell.service; then
@@ -171,7 +172,7 @@ if command -v qdbus6 >/dev/null 2>&1 \
         fi
     fi
 else
-    printf '提示：Plasma 当前未响应；壁纸插件将在下次登录时生效。\n'
+    printf '提示：Plasma 当前未响应；壁纸渲染代码将在下次登录时生效。\n'
 fi
 
 remove_legacy_install
@@ -185,5 +186,5 @@ if command -v kbuildsycoca6 >/dev/null 2>&1; then
 fi
 
 printf 'Eyes 已安装到 %s\n' "$install_prefix"
-printf 'Plasma 桌面壁纸层已切换到 Eyes；桌面图标与面板保持在上方。\n'
-printf '运行 %s/bin/eyes show 显示双眼。\n' "$install_prefix"
+printf '安装未更改原有壁纸；Eyes 只在显示时临时覆盖，隐藏后会精确恢复。\n'
+printf '登录自启动已关闭。请从应用菜单启动 Eyes，或将 Eyes 添加到桌面。\n'

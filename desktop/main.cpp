@@ -8,7 +8,6 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QFile>
-#include <QFileSystemWatcher>
 #include <QGuiApplication>
 #include <QHostAddress>
 #include <QIcon>
@@ -631,117 +630,152 @@ public:
             }
         }
 
-        m_debounceTimer.setSingleShot(true);
-        m_debounceTimer.setInterval(450);
         m_retryTimer.setSingleShot(true);
         m_retryTimer.setInterval(1800);
-        connect(&m_debounceTimer, &QTimer::timeout, this,
-                [this] { reconcile(); });
         connect(&m_retryTimer, &QTimer::timeout, this, [this] {
-            if (!m_running)
-                reconcile();
+            if (!m_running && m_hasDesired)
+                startDesired();
         });
-        connect(&m_watcher, &QFileSystemWatcher::fileChanged, this,
-                [this](const QString &path) {
-                    watchConfig();
-                    scheduleReconcile();
-                });
-        connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this,
-                [this](const QString &) {
-                    watchConfig();
-                    scheduleReconcile();
-                });
+        m_restoreDelay.setSingleShot(true);
+        m_restoreDelay.setInterval(850);
+        connect(&m_restoreDelay, &QTimer::timeout, this,
+                [this] { startDesired(); });
+        connect(m_service, &EyesService::shownChanged, this, [this] {
+            request(m_service->shown());
+        });
 
-        if (QFileInfo::exists(m_configPath)) {
-            watchConfig();
-            // Plasma may restore an old plugin after a theme or session change.
-            // Reconcile once after startup and again when a missing package
-            // wallpaper becomes readable.
-            QTimer::singleShot(0, this, [this] { reconcile(); });
-            QTimer::singleShot(6000, this, [this] {
-                if (!m_running)
-                    reconcile();
-            });
+        // A clean startup repairs a crash or an old permanent mount before
+        // the first explicit show request arrives.
+        QTimer::singleShot(0, this, [this] {
+            m_desiredKind = Operation::Restore;
+            m_hasDesired = true;
+            startDesired();
+        });
+    }
+
+    void restoreBlocking()
+    {
+        if (m_scriptPath.isEmpty() || !QFileInfo::exists(m_configPath))
+            return;
+        if (m_restoredSinceShown && !m_running)
+            return;
+        m_restoreDelay.stop();
+        m_retryTimer.stop();
+        if (m_process) {
+            QProcess *active = m_process;
+            active->disconnect(this);
+            if (!active->waitForFinished(4000)) {
+                active->kill();
+                active->waitForFinished(1000);
+            }
+            active->deleteLater();
+            m_process = nullptr;
+            m_running = false;
         }
         runBlocking(Operation::Restore);
     }
 
 private:
-    void watchConfig()
+    enum class Operation { Mount, Restore };
+
+    static QString modeArgument(Operation operation)
     {
-        const QString directory = QFileInfo(m_configPath).absolutePath();
-        if (QFileInfo::exists(directory)
-            && !m_watcher.directories().contains(directory)) {
-            m_watcher.addPath(directory);
-        }
-        if (QFileInfo::exists(m_configPath)
-            && !m_watcher.files().contains(m_configPath)) {
-            m_watcher.addPath(m_configPath);
+        return operation == Operation::Mount
+            ? QStringLiteral("--mount")
+            : QStringLiteral("--restore");
+    }
+
+    static QString describe(Operation operation)
+    {
+        return operation == Operation::Mount
+            ? QStringLiteral("mount")
+            : QStringLiteral("restore");
+    }
+
+    void request(bool shown)
+    {
+        if (m_scriptPath.isEmpty() || !QFileInfo::exists(m_configPath))
+            return;
+        m_retryTimer.stop();
+        m_restoreDelay.stop();
+        m_desiredKind = shown ? Operation::Mount : Operation::Restore;
+        m_hasDesired = true;
+        if (shown) {
+            m_restoredSinceShown = false;
+            startDesired();
+        } else {
+            // Let the QML reveal finish before replacing the wallpaper plugin.
+            m_restoreDelay.start();
         }
     }
 
-    void scheduleReconcile()
+    QStringList operationArguments(Operation operation) const
     {
-        m_debounceTimer.start();
+        QStringList arguments = {
+            m_scriptPath,
+            QStringLiteral("--config"),
+            m_configPath,
+            QStringLiteral("--json"),
+            QStringLiteral("--activate-runtime"),
+            modeArgument(operation),
+        };
+        if (operation == Operation::Restore)
+            arguments.append(QStringLiteral("--recover-legacy"));
+        return arguments;
     }
 
-    void reconcile()
+    void startDesired()
     {
-        if (m_running)
+        if (!m_hasDesired || m_running || m_scriptPath.isEmpty()
+            || !QFileInfo::exists(m_configPath))
             return;
-        if (!QFileInfo(m_configPath).exists()) {
-            m_failures++;
-            m_retryTimer.start();
+        if (m_desiredKind == Operation::Restore && m_restoreDelay.isActive())
             return;
-        }
-        if (!QFileInfo::exists(m_configPath)
-            || !QFileInfo::exists(m_scriptPath)) {
-            m_failures++;
-            m_retryTimer.start();
-            return;
-        }
-
         m_running = true;
+        m_runningKind = m_desiredKind;
         auto *process = new QProcess(this);
         m_process = process;
-        connect(process, &QProcess::readyReadStandardOutput, this,
-                [this, process] {
-                    m_stdout.append(process->readAllStandardOutput());
-                    if (m_stdout.size() > 65536) {
-                        m_stdout = m_stdout.right(65536);
-                    }
-                });
         connect(process, qOverload<int, QProcess::ExitStatus>(
                     &QProcess::finished),
-                this, [this, process](int exitCode, QProcess::ExitStatus status) {
-                    m_stdout.append(process->readAllStandardOutput());
+                this, [this, process](int exitCode,
+                                      QProcess::ExitStatus status) {
+                    const QByteArray output =
+                        process->readAllStandardOutput().trimmed();
+                    const QByteArray errors =
+                        process->readAllStandardError().trimmed();
                     m_process = nullptr;
                     m_running = false;
                     process->deleteLater();
 
-                    const QByteArray output = m_stdout.trimmed();
-                    m_stdout.clear();
                     const QJsonObject result =
                         QJsonDocument::fromJson(output).object();
                     if (status != QProcess::NormalExit || exitCode != 0
                         || !result.value(QStringLiteral("ok")).toBool()) {
-                        m_failures++;
                         qWarning().noquote()
-                            << "Eyes: unable to preserve the active Plasma "
-                               "wallpaper; retrying";
+                            << "Eyes: unable to"
+                            << describe(m_runningKind)
+                            << "the Plasma wallpaper; retrying"
+                            << (!errors.isEmpty() ? errors : output);
                         m_retryTimer.start();
                         return;
                     }
 
-                    m_failures = 0;
-                    if (result.value(QStringLiteral("changed")).toBool()) {
-                        qInfo().noquote()
-                            << "Eyes: active Plasma wallpaper mounted in Eyes";
+                    if (m_runningKind == Operation::Mount) {
+                        m_restoredSinceShown = false;
+                        if (result.value(QStringLiteral("changed")).toBool()) {
+                            qInfo().noquote()
+                                << "Eyes: wallpaper mounted with the original "
+                                   "Plasma settings preserved";
+                        }
+                    } else {
+                        m_restoredSinceShown = true;
+                        if (result.value(QStringLiteral("changed")).toBool()) {
+                            qInfo().noquote()
+                                << "Eyes: original Plasma wallpaper restored";
+                        }
                     }
-                    const QJsonArray pending =
-                        result.value(QStringLiteral("pending")).toArray();
-                    if (!pending.isEmpty())
-                        m_retryTimer.start();
+                    if (m_hasDesired && m_desiredKind != m_runningKind)
+                        startDesired();
                 });
         connect(process, &QProcess::errorOccurred, this,
                 [this](QProcess::ProcessError error) {
@@ -749,34 +783,64 @@ private:
                         m_process->deleteLater();
                         m_process = nullptr;
                         m_running = false;
-                        m_failures++;
                         m_retryTimer.start();
                     }
                 });
 
-        m_stdout.clear();
-        process->start(
-            QStringLiteral("python3"),
-            {
-                m_scriptPath,
-                QStringLiteral("--config"),
-                m_configPath,
-                QStringLiteral("--json"),
-                QStringLiteral("--activate-runtime"),
-            },
-            QIODevice::ReadOnly);
+        process->start(QStringLiteral("python3"),
+                       operationArguments(m_runningKind),
+                       QIODevice::ReadOnly);
+    }
+
+    void runBlocking(Operation operation)
+    {
+        QProcess process;
+        process.start(QStringLiteral("python3"), operationArguments(operation),
+                      QIODevice::ReadOnly);
+        if (!process.waitForStarted(3000)
+            || !process.waitForFinished(15000)) {
+            process.kill();
+            process.waitForFinished(1000);
+            qWarning().noquote()
+                << "Eyes: unable to" << describe(operation)
+                << "the Plasma wallpaper before exit";
+            return;
+        }
+        const QByteArray output = process.readAllStandardOutput().trimmed();
+        const QJsonObject result = QJsonDocument::fromJson(output).object();
+        const bool ok = process.exitStatus() == QProcess::NormalExit
+            && process.exitCode() == 0
+            && result.value(QStringLiteral("ok")).toBool();
+        if (!ok) {
+            const QByteArray errors =
+                process.readAllStandardError().trimmed();
+            qWarning().noquote()
+                << "Eyes: unable to" << describe(operation)
+                << "the Plasma wallpaper before exit"
+                << (!errors.isEmpty() ? errors : output);
+            return;
+        }
+        m_restoredSinceShown = operation == Operation::Restore;
+        if (result.value(QStringLiteral("changed")).toBool()) {
+            qInfo().noquote()
+                << (operation == Operation::Restore
+                        ? "Eyes: original Plasma wallpaper restored"
+                        : "Eyes: wallpaper mounted with the original Plasma "
+                          "settings preserved");
+        }
     }
 
     EyesService *m_service;
     QString m_configPath;
     QString m_scriptPath;
-    QFileSystemWatcher m_watcher;
-    QTimer m_debounceTimer;
+    QTimer m_restoreDelay;
     QTimer m_retryTimer;
     QPointer<QProcess> m_process;
-    QByteArray m_stdout;
     bool m_running = false;
-    int m_failures = 0;
+    bool m_hasDesired = false;
+    bool m_restoredSinceShown = false;
+    Operation m_desiredKind = Operation::Restore;
+    Operation m_runningKind = Operation::Restore;
 };
 
 class DesktopApplication final : public QObject
@@ -849,6 +913,8 @@ public:
                 m_demoTimer.stop();
         });
         connect(m_application, &QCoreApplication::aboutToQuit, this, [this] {
+            if (m_wallpaperController)
+                m_wallpaperController->restoreBlocking();
             if (m_server) {
                 m_server->close();
                 QLocalServer::removeServer(m_socketPath);

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtWebSockets
 import org.kde.plasma.plasmoid
+import org.kde.plasma.wallpapers.image as Wallpaper
 import "eyes-core.js" as EyeCore
 
 WallpaperItem {
@@ -23,6 +24,18 @@ WallpaperItem {
     readonly property string wallpaperSource: String(
         root.configuration.Image || ""
     )
+    readonly property var wallpaperSnapshot: wallpaperResolver.snapshot
+    readonly property url wallpaperBottomSource: String(
+        wallpaperSnapshot ? wallpaperSnapshot.bottom : ""
+    )
+    readonly property url wallpaperTopSource: String(
+        wallpaperSnapshot ? wallpaperSnapshot.top : ""
+    )
+    readonly property real wallpaperBlendFactor: {
+        var value = wallpaperSnapshot ? Number(wallpaperSnapshot.blendFactor) : 0;
+        return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    }
+    onWallpaperBlendFactorChanged: Qt.callLater(frostCache.scheduleUpdate)
     readonly property color wallpaperColor: String(
         root.configuration.Color || "#d8d2df"
     )
@@ -53,14 +66,30 @@ WallpaperItem {
         color: root.wallpaperColor
     }
 
-    Image {
-        id: wallpaperImage
-        anchors.fill: parent
+    Wallpaper.DayNightWallpaper {
+        id: wallpaperResolver
         source: root.wallpaperSource
-        fillMode: root.wallpaperFillMode
-        autoTransform: true
-        cache: true
-        asynchronous: true
+    }
+
+    Item {
+        id: wallpaperSurface
+        anchors.fill: parent
+
+        Wallpaper.TransientImage {
+            id: wallpaperBottomImage
+            anchors.fill: parent
+            source: root.wallpaperBottomSource
+            fillMode: root.wallpaperFillMode
+        }
+
+        Wallpaper.TransientImage {
+            id: wallpaperTopImage
+            anchors.fill: parent
+            source: root.wallpaperTopSource
+            fillMode: root.wallpaperFillMode
+            visible: root.wallpaperBlendFactor > 0
+            opacity: root.wallpaperBlendFactor
+        }
     }
 
     Item {
@@ -73,7 +102,7 @@ WallpaperItem {
             anchors.fill: parent
             MultiEffect {
                 anchors.fill: parent
-                source: wallpaperImage
+                source: wallpaperSurface
                 autoPaddingEnabled: false
                 blurEnabled: true
                 blur: 1.0
@@ -94,9 +123,25 @@ WallpaperItem {
     }
 
     Connections {
-        target: wallpaperImage
+        target: wallpaperBottomImage
         function onStatusChanged() {
-            if (wallpaperImage.status === Image.Ready) frostCache.scheduleUpdate();
+            if (wallpaperBottomImage.status === Wallpaper.TransientImage.Ready)
+                frostCache.scheduleUpdate();
+        }
+    }
+
+    Connections {
+        target: wallpaperTopImage
+        function onStatusChanged() {
+            if (wallpaperTopImage.status === Wallpaper.TransientImage.Ready)
+                frostCache.scheduleUpdate();
+        }
+    }
+
+    Connections {
+        target: wallpaperResolver
+        function onSnapshotChanged() {
+            Qt.callLater(frostCache.scheduleUpdate);
         }
     }
 
