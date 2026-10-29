@@ -33,6 +33,9 @@ file(GLOB rive_qt_sources CONFIGURE_DEPENDS
     ${rive_qt_src}/renderer/*.h ${rive_qt_src}/renderer/*.cpp
     ${rive_qt_src}/rhi/*.h ${rive_qt_src}/rhi/*.cpp)
 list(FILTER rive_qt_sources EXCLUDE REGEX "(riveqtquickplugin|rivequickpainteditem|riveqtpaint)\\.(h|cpp)$")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveScheduling.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveAntialiasing.cmake)
 file(READ ${rive_qt_src}/riveqtpath.cpp rive_path_source)
 string(FIND "${rive_path_source}" "void RiveQtPath::updatePathSegmentsData()" rive_tail_start)
 if(rive_tail_start LESS 0)

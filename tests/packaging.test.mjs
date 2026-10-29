@@ -376,3 +376,46 @@ Color=#aabbcc
   assert.ok(colorResult.actions.some(
     args => args.includes('Color') && args.includes('#aabbcc')));
 });
+
+test('resident Rive rendering reuses nodes and batches model inputs', () => {
+  const scheduling = readFileSync('cmake/RiveScheduling.cmake', 'utf8');
+  const rive = readFileSync('cmake/Rive.cmake', 'utf8');
+  assert.match(rive, /CMAKE_CONFIGURE_DEPENDS[\s\S]*RiveScheduling\.cmake/,
+    'CMake must regenerate adapted Rive sources when the patch script changes');
+  assert.match(scheduling, /if \(m_viewportRect == viewportRect\)\\n        return;/);
+  assert.match(scheduling, /!m_geometryData\.isEmpty\(\)[\s\S]*!m_clippingData\.isEmpty\(\)/,
+    'Reused nodes must upload the current path even after a geometry shrink');
+  assert.equal(
+    (scheduling.match(/if \(m_oldBufferSize > m_geometryData\.size\(\)\)/g) || []).length,
+    1,
+    'The old shrink-only branch may remain only as the upstream match pattern');
+  assert.match(scheduling, /Q_INVOKABLE void updateInputs\(const QVariantMap &values\)/);
+  assert.match(scheduling, /m_inputValues\.contains\(it\.key\(\)\)/);
+  const scene = readFileSync(
+    'packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui/RiveEyeScene.qml',
+    'utf8');
+  assert.match(scene, /stateMachineInterface\.updateInputs\(values\)/);
+  assert.doesNotMatch(scene, /property real \w+: scene\.inputs\./,
+    'Rive inputs must be pushed as one batch rather than 150 QML bindings per frame');
+});
+
+test('desktop wallpaper is mounted only for visible cycles and restored on exit', () => {
+  const source = readFileSync('desktop/main.cpp', 'utf8');
+  assert.match(source, /class WallpaperController final/);
+  assert.match(source, /&EyesService::shownChanged[\s\S]*request\(m_service->shown\(\)\)/);
+  assert.match(source, /Operation::Mount[\s\S]*Operation::Restore/);
+  assert.match(source, /--recover-legacy/);
+  assert.match(source, /restoreBlocking\(\)/);
+  assert.match(source, /quitRequested[\s\S]*restoreBlocking\(\)[\s\S]*QCoreApplication::quit/);
+  assert.doesNotMatch(source, /QFileSystemWatcher/,
+    'The host must not keep forcing Eyes back after the user selects a wallpaper');
+
+  const client = readFileSync('bin/eyes', 'utf8');
+  assert.match(client, /wait_for_desktop_shutdown\(\)/);
+  assert.match(client,
+    /if primary_command == "quit":[\s\S]*wait_for_desktop_shutdown\(\)/,
+    'the command client must wait for the restoring host exit');
+  assert.doesNotMatch(client,
+    /if primary_command == "quit":\s*stop_desktop_service\(\)/,
+    'systemd must not be stopped before the host restores the wallpaper');
+});

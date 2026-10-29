@@ -99,6 +99,8 @@ test('the native catalog and QML bindings match the authored shared expressions'
   const qml=readFileSync('packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui/RiveEyeScene.qml','utf8');
   for(const {id}of EXPRESSIONS)for(const variant of ['still','entry','act','follow','resolve']) {
     assert.ok(manifest.inputs.includes(id+variant));
-    assert.ok(qml.includes(`property real ${id+variant}:`));
   }
+  assert.ok(manifest.inputs.includes('accents'));
+  assert.match(qml,/stateMachineInterface\.updateInputs\(values\)/);
+  assert.doesNotMatch(qml,/property real \w+: scene\.inputs\./);
 });
