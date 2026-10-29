@@ -48,6 +48,39 @@ fi
 
 cmake --install "$build_dir" --prefix "$install_prefix"
 
+# Register Eyes as a normal application. The absolute executable path keeps
+# the app menu entry working even when the graphical session omits
+# ~/.local/bin from PATH.
+application_dir="$install_prefix/share/applications"
+application_entry="$application_dir/eyes-desktop.desktop"
+mkdir -p "$application_dir"
+cat >"$application_entry" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Eyes
+GenericName=Agent Desktop Presence
+Comment=在桌面上显示 Agent 工作状态
+Comment[en]=Show agent activity through a pair of animated eyes
+Exec="$install_prefix/bin/eyes" show
+TryExec=$install_prefix/bin/eyes
+Icon=eyes-desktop
+Terminal=false
+Categories=Utility;
+Keywords=Eyes;Agent;AI;Codex;
+StartupNotify=false
+Actions=Hide;Quit;
+
+[Desktop Action Hide]
+Name=隐藏 Eyes
+Exec="$install_prefix/bin/eyes" hide
+
+[Desktop Action Quit]
+Name=退出 Eyes
+Exec="$install_prefix/bin/eyes" quit
+EOF
+chmod 0644 "$application_entry"
+
 # User-level hooks stay available outside this checkout and apply to every
 # Codex project. The installer preserves unrelated hook definitions.
 python3 "$project_root/packaging/install-codex-hooks.py"
@@ -58,15 +91,16 @@ desktop_config="${XDG_CONFIG_HOME:-$HOME/.config}/plasma-org.kde.plasma.desktop-
 python3 "$project_root/packaging/configure-plasma-wallpaper.py" \
     --config "$desktop_config"
 
-# Older releases installed the same autostart file under the user prefix.
-# Keep only the XDG autostart entry below so sessions cannot launch Eyes twice.
+# Startup is opt-in. Remove entries written by earlier releases so neither the
+# session manager nor the user service can launch Eyes at login.
+autostart_entry="$config_home/autostart/eyes-desktop-autostart.desktop"
+rm -f "$autostart_entry"
 legacy_autostart="$install_prefix/etc/xdg/autostart/eyes-desktop-autostart.desktop"
 rm -f "$legacy_autostart"
 rmdir "$install_prefix/etc/xdg/autostart" 2>/dev/null || true
 rmdir "$install_prefix/etc/xdg" 2>/dev/null || true
 rmdir "$install_prefix/etc" 2>/dev/null || true
 
-mkdir -p "$config_home/autostart"
 desktop_exec="$install_prefix/bin/eyes-desktop"
 systemd_dir="$config_home/systemd/user"
 mkdir -p "$systemd_dir"
@@ -80,27 +114,17 @@ ConditionPathExists=!$visibility_marker
 [Service]
 Type=simple
 ExecStart="$desktop_exec" --hidden
-Restart=always
+Restart=on-failure
 RestartSec=1
 
 [Install]
 WantedBy=plasma-plasmashell.service
 EOF
-cat >"$config_home/autostart/eyes-desktop-autostart.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Eyes
-Comment=登录后等待 Agent 工作状态
-Exec=systemctl --user start eyes-desktop.service
-Icon=eyes-desktop
-Terminal=false
-X-KDE-autostart-after=panel
-StartupNotify=false
-EOF
+rm -f "$systemd_dir/plasma-plasmashell.service.wants/eyes-desktop.service"
 
 if command -v systemctl >/dev/null 2>&1; then
     systemctl --user daemon-reload >/dev/null 2>&1 || true
-    systemctl --user enable eyes-desktop.service >/dev/null 2>&1 || true
+    systemctl --user disable eyes-desktop.service >/dev/null 2>&1 || true
 fi
 
 if command -v kwriteconfig6 >/dev/null 2>&1; then
@@ -156,9 +180,8 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$install_prefix/share/applications" \
         >/dev/null 2>&1 || true
 fi
-
-if ! "$install_prefix/bin/eyes" status >/dev/null 2>&1; then
-    "$install_prefix/bin/eyes" host-start >/dev/null
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
 fi
 
 printf 'Eyes 已安装到 %s\n' "$install_prefix"

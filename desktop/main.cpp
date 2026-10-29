@@ -1028,7 +1028,9 @@ int main(int argc, char *argv[])
     if (!desktop.isPrimary())
         return 0;
 
-    if (!parser.isSet(hiddenOption))
+    if (parser.isSet(previewOption))
+        desktop.showOverlay();
+    else if (!parser.isSet(hiddenOption))
         desktop.showOverlay();
 
     return application.exec();

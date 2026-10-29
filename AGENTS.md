@@ -53,7 +53,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `tests/qml/tst_eyes.qml`：Qt 6 GPU 实际像素、表情、透明边界和眨眼测试。
 - `bin/eyes`：本地控制客户端；连接 `$XDG_RUNTIME_DIR/eyes.sock` 并按需启动宿主。
 - `packaging/migrate-legacy-install.sh`：停止并移除旧版本的命令、插件与自启动项，不删除壁纸图片或用户数据。
-- `packaging/install-user.sh`：用户级安装、自启动、Codex hooks、KWin 脚本注册和宿主启动。`packaging/install-codex-hooks.py` 合并用户 hooks，不得覆盖其他工具条目。
+- `packaging/install-user.sh`：用户级安装、应用菜单注册、Codex hooks 与 KWin 脚本注册。默认关闭登录自启动，也不自动启动宿主；`packaging/install-codex-hooks.py` 合并用户 hooks，不得覆盖其他工具条目。
 - `packaging/kwin-eyes-cursor/`：将 KWin 全局光标发送到 `org.eyes.Desktop /Cursor`。
 - `docs/MOTION.md`：眼神表演、高光和注意力动作台本。
 - `docs/CODEX.md`：Codex Desktop hooks 映射、信任步骤和限制。
@@ -93,7 +93,14 @@ eyes quit
 - WebSocket 桥仅监听 `127.0.0.1:38271`。断开后必须隐藏画面，避免后台停止后仍残留最后一帧眼睛。
 - KWin 脚本通过 `workspace.cursorPosChanged` 推送全局指针位置。静止时不再发事件，最后一个有效坐标必须持续保留；禁止按事件超时回退到 Wayland 的 `QCursor::pos()`（无焦点时可能返回原点）。仅 X11/xcb 在未取得 KWin 坐标前可用全局 QCursor 回退，未知坐标时 attention.active=false。
 - 桌面壁纸只做纯模糊（blur=1、blurMax=64、blurMultiplier=1），不叠加白色蒙版、渐变、边框，不调整饱和度、亮度或对比度。
-- 自启动只能有一个用户级入口：`~/.config/autostart/eyes-desktop-autostart.desktop`。旧版本曾在安装前缀的 `etc/xdg/autostart` 留下重复入口，安装脚本必须继续清理该旧路径。
+- 登录自启动默认关闭。安装脚本不得创建
+  `~/.config/autostart/eyes-desktop-autostart.desktop`、不得启用
+  `eyes-desktop.service`，也不得在安装结束时启动宿主；升级时必须删除旧 XDG autostart
+  文件与旧的 `plasma-plasmashell.service.wants` 启用链接。服务单元保留供
+  `eyes show` 按需启动。
+- `packaging/eyes-desktop.desktop` 是标准应用目录入口，名称固定为 Eyes，安装后必须使用
+  安装前缀下 `bin/eyes` 的绝对路径，使应用菜单、桌面快捷方式和任务栏固定都能直接显示
+  Eyes。见 ADR-012。
 
 ## 环境与构建
 

@@ -1,9 +1,23 @@
 [Desktop Entry]
 Type=Application
+Version=1.0
 Name=Eyes
+GenericName=Agent Desktop Presence
 Comment=在桌面上显示 Agent 工作状态
+Comment[en]=Show agent activity through a pair of animated eyes
 Exec=eyes show
+TryExec=eyes
 Icon=eyes-desktop
 Terminal=false
 Categories=Utility;
+Keywords=Eyes;Agent;AI;Codex;
 StartupNotify=false
+Actions=Hide;Quit;
+
+[Desktop Action Hide]
+Name=隐藏 Eyes
+Exec=eyes hide
+
+[Desktop Action Quit]
+Name=退出 Eyes
+Exec=eyes quit

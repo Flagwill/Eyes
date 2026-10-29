@@ -5,6 +5,36 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+test('user install is opt-in, exports a launchable app, and restarts only failures', () => {
+  const installer = readFileSync('packaging/install-user.sh', 'utf8');
+  assert.match(installer, /ConditionPathExists=!\$visibility_marker/);
+  assert.match(installer, /Restart=on-failure/);
+  assert.match(installer, /systemctl --user stop eyes-desktop\.service/);
+  assert.ok(
+    installer.indexOf('bin/eyes" quit') <
+      installer.indexOf('systemctl --user stop eyes-desktop.service'),
+    'the installer must request a restoring quit before a forced service stop',
+  );
+  assert.match(installer, /systemctl --user disable eyes-desktop\.service/);
+  assert.match(installer, /rm -f "\$autostart_entry"/);
+  assert.match(installer, /Exec="\$install_prefix\/bin\/eyes" show/);
+  assert.doesNotMatch(installer, /Restart=always/);
+  assert.doesNotMatch(installer, /systemctl --user enable eyes-desktop\.service/);
+  assert.doesNotMatch(installer, /bin\/eyes" host-start/);
+  assert.doesNotMatch(installer, /cat >"\$config_home\/autostart/);
+  assert.match(installer, /--restore --recover-legacy/);
+  assert.doesNotMatch(installer, /--mount/);
+  assert.doesNotMatch(installer, /wallpaperPlugin = ['"]org\.eyes\.wallpaper/);
+  assert.match(installer, /安装未更改原有壁纸/);
+
+  const application = readFileSync('packaging/eyes-desktop.desktop', 'utf8');
+  assert.match(application, /^Type=Application$/m);
+  assert.match(application, /^Name=Eyes$/m);
+  assert.match(application, /^Exec=eyes show$/m);
+  assert.match(application, /^Icon=eyes-desktop$/m);
+  assert.match(application, /^Actions=Hide;Quit;$/m);
+});
+
 test('upgrade retires legacy entry points and preserves Eyes and user images', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'eyes-upgrade-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

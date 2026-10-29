@@ -115,9 +115,11 @@ coverage on the dark saving lids.
 
 The installed Plasma component logged both GPU and Rive loading on eDP-1 at
 DPR=2. A real installed-host completion remained happy and visible after two
-seconds and was hidden after 5.3 seconds despite status reads. The user-level
-Eyes autostart remains the only Eyes autostart entry. These checks confirm
-rendering and lifecycle behavior; visual recognition remains a human judgment.
+seconds and was hidden after 5.3 seconds despite status reads. At the time of
+this verification, the user-level Eyes autostart was the only Eyes autostart
+entry; ADR-012 later changed the default to opt-in startup. These checks
+confirm rendering and lifecycle behavior; visual recognition remains a human
+judgment.
 
 On 2026-10-29, a persistent wallpaper guard was added to `eyes-desktop`.
 Plasma theme tools and wallpaper settings may replace `org.eyes.wallpaper`

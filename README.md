@@ -32,11 +32,13 @@ sudo pacman -S --needed cmake ninja qt6-base qt6-declarative \
 npm run desktop:build
 ```
 
-安装到用户目录、保留原壁纸并启用登录自启动（更新绘制代码时会刷新 Plasma 桌面和面板，应用窗口保留）：
+安装到用户目录、保留原壁纸并注册应用菜单入口。默认不会登录自启动，也不会在安装结束时启动 Eyes；更新绘制代码时会刷新 Plasma 桌面和面板，应用窗口保留：
 
 ```bash
 npm run desktop:install
 ```
+
+安装后可在应用菜单中搜索 **Eyes**，点击启动；也可以将其拖到桌面、固定到任务栏或通过右键菜单隐藏和退出。应用入口使用安装目录下 `bin/eyes` 的绝对路径，不依赖图形会话是否包含 `~/.local/bin`。
 
 安装后的常用命令：
 
@@ -157,7 +159,7 @@ desktop/main.cpp                无窗口后台、命令、WebSocket 光标与�
 packaging/plasma-wallpaper/     Plasma 原生壁纸、GPU 眼睛与磨砂缓存
 tests/qml/                     GPU 实际像素、表情和眨眼回归
 bin/eyes                        本地控制客户端
-packaging/                      用户安装、自启动与 KWin 光标桥
+packaging/                      用户安装、应用菜单入口与 KWin 光标桥
 tests/eyes.test.mjs             动画与构图回归测试
 tests/packaging.test.mjs        升级清理与壁纸保留回归
 tests/codex-hooks.test.mjs      Codex 生命周期映射、用户安装与静默失败回归

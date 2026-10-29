@@ -3,7 +3,8 @@
 ## Status
 Accepted, 2026-10-27. Retains ADR-006's shared animation clock and ADR-007's
 vector accessories. Updates the native bridge's scheduling and resource
-lifetime without changing expression geometry or output resolution.
+lifetime without changing expression geometry or output resolution. ADR-012
+later makes login startup opt-in while retaining this demand-driven runtime.
 
 ## Context
 Eyes should remain available throughout a desktop session with little idle
@@ -18,7 +19,7 @@ rate. The upstream offscreen submission preceded synchronization and path
 preparation, relying on continual extra frames to display the final pose.
 
 ## Decision
-Keep the windowless host and its existing hidden autostart. Enable XCB cursor
+Keep the windowless host as an on-demand service. Enable XCB cursor
 polling only while visible and before the first KWin position. Stop it
 permanently once KWin supplies a valid position. While hidden, retain each
 latest position directly without timers or attention messages. Coalesce
