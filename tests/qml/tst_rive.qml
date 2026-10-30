@@ -363,10 +363,11 @@ Item {
             const before=grabImage(eyes),region=propRegion();
             eyes.simulation.accents=false; eyes.advance(1/60); wait(90);
             const clear=grabImage(eyes),mask=[];
-            let differences=0;
+            let differences=0, overlapping=0;
             for(let x=region.x-40;x<region.x+44;x+=2) for(let y=region.y-42;y<region.y+42;y+=2) {
                 const p=modelPoint(x,y),a=sample(before,p),b=sample(clear,p);
                 if(Math.abs(a.g-b.g)>10)differences++;
+                if(b.g<150 && a.g>b.g+20)overlapping++;
                 const awayFromEyes=["l","r"].every(side => {
                     const eye=Core.EyesCore.getEyeGeometry(eyes.pose,side,0,0);
                     return Math.abs(x-eyes.pose[side+"x"])>eye.width/2+10 ||
@@ -375,6 +376,8 @@ Item {
                 if(awayFromEyes&&b.g>250&&a.g<239&&a.b>a.g+10)mask.push(p);
             }
             verify(differences>8,data.tag+" must render its vector object above the eye scene");
+            if(data.tag==="searching"||data.tag==="debugging")
+                verify(overlapping>8,"A previous highlight clip must not mask the magnifier over the eye");
             if(data.tag!=="searching"&&data.tag!=="debugging")
                 verify(mask.length>3,data.tag+" must retain visible object edges outside the eye");
             eyes.simulation.accents=true;

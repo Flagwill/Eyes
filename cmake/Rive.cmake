@@ -35,7 +35,11 @@ file(GLOB rive_qt_sources CONFIGURE_DEPENDS
 list(FILTER rive_qt_sources EXCLUDE REGEX "(riveqtquickplugin|rivequickpainteditem|riveqtpaint)\\.(h|cpp)$")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveScheduling.cmake
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveAntialiasing.cmake)
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveAntialiasing.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveBatching.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveGeometry.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveResources.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveQuality.cmake)
 file(READ ${rive_qt_src}/riveqtpath.cpp rive_path_source)
 string(FIND "${rive_path_source}" "void RiveQtPath::updatePathSegmentsData()" rive_tail_start)
 if(rive_tail_start LESS 0)
@@ -50,6 +54,10 @@ list(REMOVE_ITEM rive_qt_sources ${rive_qt_src}/riveqtpath.cpp)
 list(APPEND rive_qt_sources ${CMAKE_CURRENT_BINARY_DIR}/riveqtpath.cpp)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveAntialiasing.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveScheduling.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveBatching.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveGeometry.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveResources.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveQuality.cmake)
 qt_add_qml_module(EyesRive URI EyesRive VERSION 1.0 SHARED PLUGIN_TARGET EyesRive
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/EyesRive
     SOURCES ${rive_qt_sources} desktop/rive-settings.h)

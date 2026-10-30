@@ -1,0 +1,191 @@
+{
+  "date": "2026-10-30",
+  "baseline": "previous iteration: compatible clip batching, all blend targets allocated, explicit SMAA",
+  "candidate": "preclipped triangle meshes, combined clear/paint, lazy blend targets, Automatic AA",
+  "hardware": "AMD Radeon 680M (Rembrandt)",
+  "display": {
+    "physical": [
+      2240,
+      1400
+    ],
+    "refresh_hz": 60.02,
+    "scale": 1.4,
+    "qt_dpr": 2
+  },
+  "method": {
+    "warmup_seconds": 4,
+    "sample_seconds": 12,
+    "display_inhibition": "KDE ChangeScreenSettings; persistent D-Bus connection",
+    "gpu_engine": "per-process DRM gfx nanoseconds / wall time, unique DRM clients",
+    "gpu_memory": "sum of DRM resident vram and gtt for unique plasmashell clients",
+    "gpu_frame_time": "Qt QRhi timestamps on actual Plasma wallpaper window",
+    "cpu_percent": "whole plasmashell, one logical core = 100%, frame logging enabled"
+  },
+  "before": {
+    "hidden": {
+      "duration_seconds": 12.04316509400087,
+      "display_on_samples": 12,
+      "cpu_percent": 0.3321386005073157,
+      "gpu_engine_percent": 0.0,
+      "gpu_memory_mib": 245.37109375,
+      "model_fps_samples": []
+    },
+    "idle": {
+      "duration_seconds": 12.04831696999463,
+      "display_on_samples": 12,
+      "cpu_percent": 37.68161155874723,
+      "gpu_engine_percent": 50.24893759084675,
+      "gpu_memory_mib": 1327.55859375,
+      "model_fps_samples": [
+        58.7,
+        59.9,
+        59.5
+      ],
+      "gpu_frame": {
+        "samples": 741,
+        "mean_ms": 8.154434143049933,
+        "median_ms": 8.3254,
+        "p95_ms": 9.2365
+      }
+    },
+    "editing": {
+      "duration_seconds": 12.044677549005428,
+      "display_on_samples": 12,
+      "cpu_percent": 39.02138501323431,
+      "gpu_engine_percent": 54.241087570994935,
+      "gpu_memory_mib": 1319.5546875,
+      "model_fps_samples": [
+        59.9,
+        59.0
+      ],
+      "gpu_frame": {
+        "samples": 740,
+        "mean_ms": 8.78474027027027,
+        "median_ms": 8.959399999999999,
+        "p95_ms": 10.12
+      }
+    }
+  },
+  "after": {
+    "hidden": {
+      "duration_seconds": 12.04358575900551,
+      "display_on_samples": 12,
+      "cpu_percent": 0.1660634996935659,
+      "gpu_engine_percent": 0.0,
+      "gpu_memory_mib": 260.90234375,
+      "model_fps_samples": []
+    },
+    "idle": {
+      "duration_seconds": 12.047967760001484,
+      "display_on_samples": 12,
+      "cpu_percent": 37.350697558634955,
+      "gpu_engine_percent": 14.117568704381979,
+      "gpu_memory_mib": 749.36328125,
+      "model_fps_samples": [
+        59.6,
+        60.0,
+        58.7
+      ],
+      "gpu_frame": {
+        "samples": 745,
+        "mean_ms": 2.2514844295302012,
+        "median_ms": 2.1118,
+        "p95_ms": 3.3864
+      }
+    },
+    "editing": {
+      "duration_seconds": 12.046082114997262,
+      "display_on_samples": 12,
+      "cpu_percent": 38.43573334300696,
+      "gpu_engine_percent": 14.795874857776571,
+      "gpu_memory_mib": 745.3671875,
+      "model_fps_samples": [
+        59.7,
+        59.1
+      ],
+      "gpu_frame": {
+        "samples": 741,
+        "mean_ms": 2.371714709851552,
+        "median_ms": 2.2195,
+        "p95_ms": 3.5409
+      }
+    }
+  },
+  "quality": {
+    "explicit_smaa_mesh_only": {
+      "frames": 140,
+      "max_channel_difference": 1,
+      "mean_absolute_difference": 1.101784799941482e-06,
+      "rmse": 0.001049659373292823,
+      "pixels_changed": 1333,
+      "pixels_changed_over_2": 0,
+      "pixels_total": 437472000
+    },
+    "automatic_default": {
+      "frames": 140,
+      "max_channel_difference": 65,
+      "mean_absolute_difference": 0.0026849825055470216,
+      "rmse": 0.15807629984534047,
+      "pixels_changed": 364962,
+      "pixels_changed_over_2": 184381,
+      "pixels_total": 437472000
+    },
+    "image_size": [
+      2232,
+      1400
+    ],
+    "dpr": 2,
+    "states": 28,
+    "cases": [
+      "still",
+      "natural action",
+      "pointer turn",
+      "blink",
+      "fade"
+    ]
+  },
+  "validation": {
+    "node": 83,
+    "gpu_automatic": 304,
+    "gpu_explicit_smaa": 304,
+    "triangle_geometry": "coverage, shared edges, winding and affine paint transforms"
+  },
+  "isolated_exploration": {
+    "previous": {
+      "device": "AMD AMD Radeon Graphics (radeonsi, rembrandt, ACO, DRM 3.64, 7.2.11-arch1-1) 4.6 (Compatibility Profile) Mesa 26.2.5-arch1.1",
+      "dpr": 2,
+      "fps": 57.76382117180398,
+      "frames": 700,
+      "gpu_mean_ms": 9.580989185714285,
+      "gpu_median_ms": 8.29596,
+      "gpu_p95_ms": 13.491639999999999,
+      "gpu_samples": 700,
+      "height": 1001,
+      "width": 1596
+    },
+    "mesh_with_smaa": {
+      "device": "AMD AMD Radeon Graphics (radeonsi, rembrandt, ACO, DRM 3.64, 7.2.11-arch1-1) 4.6 (Compatibility Profile) Mesa 26.2.5-arch1.1",
+      "dpr": 2,
+      "fps": 59.91347645090197,
+      "frames": 735,
+      "gpu_mean_ms": 2.985600421768707,
+      "gpu_median_ms": 2.8942400000000004,
+      "gpu_p95_ms": 3.5486,
+      "gpu_samples": 735,
+      "height": 1001,
+      "width": 1596
+    },
+    "mesh_hardware_msaa": {
+      "device": "AMD AMD Radeon Graphics (radeonsi, rembrandt, ACO, DRM 3.64, 7.2.11-arch1-1) 4.6 (Compatibility Profile) Mesa 26.2.5-arch1.1",
+      "dpr": 2,
+      "fps": 59.52479509893203,
+      "frames": 720,
+      "gpu_mean_ms": 2.052489472222224,
+      "gpu_median_ms": 1.78568,
+      "gpu_p95_ms": 2.8930000000000002,
+      "gpu_samples": 720,
+      "height": 1001,
+      "width": 1596
+    }
+  }
+}

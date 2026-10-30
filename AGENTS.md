@@ -50,7 +50,9 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `integrations/codex/hooks.json`、`integrations/codex/eyes-codex-hook.py`：用户级 Codex 生命周期适配器源；安装到 `~/.codex`，只调用现有 Eyes 命令，错误必须静默并以 0 退出。不要在仓库内保留第二份 `.codex` hook 入口，否则已信任的项目级配置会与用户级配置重复驱动状态。
 - `packaging/plasma-wallpaper/org.eyes.wallpaper/`：Plasma 壁纸包；`main.qml` 管理磨砂缓存和状态桥，`EyeScene.qml` 适配共享模型，`eye.frag` 绘制 GPU 眼睛。
 - `RiveEyeScene.qml` 为产品默认场景，使用原生 GPU 插件；`EyeScene.qml` / `eye.frag` 为几何参考。两条路径均须运行 GPU 回归。Rive 使用实际输出尺寸的目标，禁止固定低分辨率画面拉伸到桌面。
-- Rive 桌面场景保留 SMAA，并通过 `cmake/RiveAntialiasing.cmake` 在独立离屏目标中启用显卡支持的 8×/4×/2× 多重采样；颜色、模板与绘制管线采样数必须一致，最终合成管线匹配 Qt 实际目标。最终线性取样，预乘透明度只合成一次。路径精度为 4096 单位。GPU 回归覆盖全部 28 种姿态和亚像素位移，检查实际中间覆盖、狭窄过渡和正确淡出，不能只检查轮廓位置。
+- Rive 桌面场景默认 Automatic 抗锯齿：`cmake/RiveAntialiasing.cmake` 在独立离屏目标中启用显卡支持的 8×/4×/2× 多重采样，`cmake/RiveQuality.cmake` 在至少 4× 时省去额外 SMAA 后处理，低采样后端自动补 SMAA；显式 SMAA 模式仍可用于质量参考。此取舍经用户允许轻微、难以察觉的质量差异后采用。颜色、模板与绘制管线采样数必须一致，最终合成管线匹配 Qt 实际目标。最终线性取样，预乘透明度只合成一次。路径精度为 4096 单位。GPU 回归覆盖全部 28 种姿态和亚像素位移，检查实际中间覆盖、狭窄过渡和正确淡出，不能只检查轮廓位置。
+- `cmake/RiveBatching.cmake` 只合并连续、source-over 且完整裁切几何相同的路径；裁切变化或进入/离开裁切层必须重开通道并清模板。保留绘制顺序、原有 stencil/pipeline 与动态高光，不能让高光模板遮住眼面上的放大镜等道具。性能对比必须确认物理屏幕已点亮；熄屏时模型仍可能报 60 FPS，但没有实际 GPU 提交。见 ADR-014。
+- `cmake/RiveGeometry.cmake` / `desktop/eyes-triangle-clip.h` 在已有三角网格上预裁切向量，保留原始 paint 坐标插值；不要用低精度曲线布尔运算替代，不要改变共享眼形。向量裁切完成后清空节点 GPU clip，让清屏和绘制合并为一个颜色通道。`cmake/RiveResources.cmake` 仅在实际需要读取目标颜色的混合模式出现时分配 B / intermediate 多重采样面；首次分配后重绑合成和 SMAA 输入。保留原生输出密度与上述 Automatic 策略，不能关闭低采样后端的 SMAA 兜底；新增复杂裁切须检查 CPU 几何开销。几何回归使用 `cmake --build build --target eyes-geometry-test && build/eyes-geometry-test`，完整约定见 ADR-015。
 - `tests/qml/tst_eyes.qml`：Qt 6 GPU 实际像素、表情、透明边界和眨眼测试。
 - `bin/eyes`：本地控制客户端；连接 `$XDG_RUNTIME_DIR/eyes.sock` 并按需启动宿主。
 - `packaging/migrate-legacy-install.sh`：停止并移除旧版本的命令、插件与自启动项，不删除壁纸图片或用户数据。

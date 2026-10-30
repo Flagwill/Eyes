@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-30",
+  "baseline_revision": "e38b636bdf7f51688f6da7b43ff0b744a4d439e9",
+  "hardware": "AMD Radeon 680M (Rembrandt)",
+  "software": {
+    "plasma": "6.8.1",
+    "qt": "6.12.0",
+    "mesa": "26.2.5-arch1.1"
+  },
+  "display": {
+    "physical": [
+      2240,
+      1400
+    ],
+    "refresh_hz": 60.02,
+    "scale": 1.4,
+    "qt_render_dpr": 2
+  },
+  "method": {
+    "window": "installed Plasma wallpaper",
+    "warmup_seconds": 4,
+    "sample_seconds": 12,
+    "gpu_timing": "Qt QRhi GPU timestamps; QSG_RHI_PROFILE=1 and QSG_RENDER_TIMING=1",
+    "animation_fps_setting": 60,
+    "pointer": "stationary",
+    "cpu_percent_basis": "one logical core = 100%; whole plasmashell, profiling enabled"
+  },
+  "before": {
+    "hidden": {
+      "elapsed_seconds": 12.000084300001618,
+      "plasma_cpu_percent": 0.24999824376230595,
+      "model_fps_samples": []
+    },
+    "idle": {
+      "elapsed_seconds": 12.000090135996288,
+      "plasma_cpu_percent": 44.24966762601025,
+      "model_fps_samples": [],
+      "gpu": {
+        "samples": 670,
+        "mean_ms": 13.151391343283581,
+        "median_ms": 12.421949999999999,
+        "p95_ms": 14.895
+      }
+    },
+    "editing": {
+      "elapsed_seconds": 12.000092882997706,
+      "plasma_cpu_percent": 42.916334483516884,
+      "model_fps_samples": [
+        44.3,
+        44.2,
+        44.9
+      ],
+      "gpu": {
+        "samples": 547,
+        "mean_ms": 21.762162340036564,
+        "median_ms": 20.6773,
+        "p95_ms": 23.7438
+      }
+    }
+  },
+  "after": {
+    "hidden": {
+      "elapsed_seconds": 12.00014897499932,
+      "plasma_cpu_percent": 0.1666645975951444,
+      "model_fps_samples": []
+    },
+    "idle": {
+      "elapsed_seconds": 12.000096152005426,
+      "plasma_cpu_percent": 39.083020174102685,
+      "model_fps_samples": [],
+      "gpu": {
+        "samples": 735,
+        "mean_ms": 8.431951428571429,
+        "median_ms": 8.497,
+        "p95_ms": 9.7456
+      }
+    },
+    "editing": {
+      "elapsed_seconds": 12.000089968001703,
+      "plasma_cpu_percent": 39.833034691788924,
+      "model_fps_samples": [
+        59.4,
+        59.8,
+        58.7
+      ],
+      "gpu": {
+        "samples": 736,
+        "mean_ms": 8.729848369565218,
+        "median_ms": 8.582149999999999,
+        "p95_ms": 10.0613
+      }
+    }
+  },
+  "pixel_equivalence": {
+    "frames": 140,
+    "different_frames": 0,
+    "states": 28,
+    "cases": [
+      "still",
+      "natural action",
+      "pointer turn",
+      "blink",
+      "fade"
+    ],
+    "image_size": [
+      2232,
+      1400
+    ],
+    "dpr": 2
+  },
+  "validation": {
+    "node_tests": 83,
+    "gpu_tests": 304
+  }
+}

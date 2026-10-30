@@ -30,8 +30,8 @@ wallpaper component. Native targets use the actual scene output dimensions,
 including device pixel ratio, not a 560x340 texture enlarged to a desktop. GPU and browser tests execute the
 real runtimes and check their resulting geometry / pixels.
 
-The wallpaper keeps SMAA enabled and adds geometry coverage independent of
-Plasma's window target. `cmake/RiveAntialiasing.cmake` generates an adapted
+The wallpaper supplies geometry coverage independent of Plasma's window
+target. `cmake/RiveAntialiasing.cmake` generates an adapted
 render node from the pinned LGPL source, with unambiguous replacement guards.
 The offscreen colour, stencil and vector pipelines use the highest supported
 sample count among 8, 4 and 2 (single sample on unsupported/Metal backends).
@@ -39,6 +39,12 @@ The final pipeline still matches Qt's actual output target. Final sampling is
 linear and uses premultiplied source-over blending to avoid moving stair steps
 and dark fringes. Path normalization uses 4096 units to retain curve detail
 when enlarged. No downloaded source is modified.
+
+The default native `Automatic` mode uses hardware MSAA alone at four or more
+samples, avoiding three full-target SMAA passes and their textures. On lower
+sample counts it adds SMAA. Explicit `SMAA` remains available for reference
+captures. This small edge-filter trade-off was authorized for lower GPU cost;
+output dimensions and MSAA sample selection are unchanged (ADR-015).
 
 `cmake/RiveScheduling.cmake` adapts the pinned bridge for resident operation.
 The build mirrors upstream files into an ignored adapter directory so all
@@ -51,7 +57,27 @@ Held frames reuse the vector texture while composition still updates opacity
 and transforms. This removes the upstream extra offscreen frame and prevents
 the last pose from remaining stale when model updates stop. See ADR-008.
 
-The GPU regression covers all eight expressions at three fractional pixel
+`cmake/RiveBatching.cmake` groups consecutive source-over paths with identical
+clip geometry into one render pass. Each path retains its own buffers and
+draw call; the shared pass avoids resolving the full MSAA texture after every
+small shape. Changes of clip start a fresh pass, and destination-reading blend
+modes retain the original ping-pong path. ADR-014 retained output size, sample
+count, gradients, SMAA and paint order; its DPR=2 captures of all 28 states
+across five motion/fade conditions matched the previous renderer pixel for
+pixel. ADR-015 adds the following geometry and quality policy.
+
+ADR-015 adds triangle-mesh clipping during native path preparation. Generated
+vertices retain their local paint coordinates, so gradients still use the same
+GPU shaders. The shipped vector scene then paints in one multisample colour
+pass, including its clear. Destination-reading B/intermediate colour surfaces
+are allocated only when an active path needs them, with composition/SMAA
+bindings refreshed on that transition. Image clipping retains the upstream
+stencil path. With explicit SMAA retained for comparison, a 140-frame DPR=2
+capture found at most a one-level 8-bit colour difference in 1,333 pixels out
+of 437 million. Automatic-mode edge differences are measured separately in the
+performance report. `eyes-geometry-test` checks coverage and paint transforms.
+
+The GPU regression covers all 28 states at three fractional pixel
 positions, requires most sampled columns to have intermediate coverage, and
 limits the transition to two physical pixels. A fade regression checks that
 alpha is applied once. No silhouette blur or glow is added.

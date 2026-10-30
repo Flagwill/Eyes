@@ -51,9 +51,9 @@ Item {
             interactive: false
             fillMode: Rive.RenderSettings.Stretch
             renderQuality: Rive.RenderSettings.High
-            // Tessellation quality does not antialias pixels. Plasma commonly
-            // has a single-sample swapchain, so explicitly smooth edge coverage.
-            postprocessingMode: Rive.RenderSettings.SMAA
+            // The native target supplies its own MSAA independently of Plasma.
+            // Use SMAA when hardware provides fewer than four coverage samples.
+            postprocessingMode: Rive.RenderSettings.Automatic
             fileSource: Window.window ? decodeURIComponent(
                 Qt.resolvedUrl("eyes.riv").toString().replace(/^file:\/\//, "")) : ""
             currentArtboardIndex: 0

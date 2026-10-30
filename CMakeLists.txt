@@ -22,6 +22,13 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
 
 include(cmake/Rive.cmake)
 
+# Explicit benchmark target; it is neither installed nor part of normal builds.
+add_executable(eyes-render-benchmark EXCLUDE_FROM_ALL tools/render-benchmark.cpp)
+target_link_libraries(eyes-render-benchmark PRIVATE Qt6::Quick Qt6::GuiPrivate)
+add_executable(eyes-geometry-test EXCLUDE_FROM_ALL tests/triangle-clip.cpp)
+target_include_directories(eyes-geometry-test PRIVATE desktop)
+target_link_libraries(eyes-geometry-test PRIVATE Qt6::Gui)
+
 set(EYES_WALLPAPER_UI packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui)
 set(EYES_SHADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/eye.frag.qsb)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui)
