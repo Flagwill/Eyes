@@ -11,12 +11,6 @@ WallpaperItem {
     readonly property string bridgeUrl: "ws://127.0.0.1:38271/"
     property bool shown: false
     property real reveal: shown ? 1 : 0
-    property var hostState: ({
-        "eyebrow": "Eyes 在线",
-        "title": "随时准备出发",
-        "detail": "收到任务后，我会在这里工作",
-        "motion": "idle"
-    })
     property var simulation: EyeCore.EyesCore.createSimulation({
         "immersive": true,
         "reducedMotion": false
@@ -163,99 +157,6 @@ WallpaperItem {
         onHeightChanged: root.resizeEngine()
     }
 
-    Item {
-        id: presenceCopy
-        anchors.fill: parent
-        opacity: root.reveal
-
-        Column {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: EyeCore.EyesCore.getLayout(
-                root.width,
-                root.height,
-                true
-            ).captionY
-            width: Math.min(root.width * 0.72, 760)
-            spacing: Math.max(5, root.height * 0.007)
-
-            Row {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: Math.max(7, root.width * 0.006)
-
-                Rectangle {
-                    width: Math.max(5, root.width * 0.0035)
-                    height: width
-                    radius: width / 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: "#8952cf"
-                    opacity: 0.72
-                }
-
-                Text {
-                    text: String(root.hostState.eyebrow || "Eyes")
-                    color: Qt.rgba(0.31, 0.23, 0.41, 0.57)
-                    font.family: "sans-serif"
-                    font.pixelSize: Math.max(10, Math.min(16, root.width * 0.006))
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: Math.max(1.5, root.width * 0.0015)
-                }
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: String(root.hostState.title || "")
-                color: "#4f3c67"
-                font.family: "sans-serif"
-                font.pixelSize: Math.max(18, Math.min(34, root.width * 0.013))
-                font.weight: Font.Medium
-            }
-
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: String(root.hostState.detail || "")
-                color: Qt.rgba(0.31, 0.25, 0.39, 0.55)
-                font.family: "sans-serif"
-                font.pixelSize: Math.max(11, Math.min(16, root.width * 0.0065))
-            }
-        }
-
-        Text {
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.leftMargin: root.width * 0.042
-            anchors.topMargin: root.height * 0.042
-            text: "AGENT PRESENCE"
-            color: Qt.rgba(0.27, 0.20, 0.35, 0.31)
-            font.pixelSize: Math.max(8, Math.min(12, root.width * 0.0048))
-            font.letterSpacing: Math.max(1.2, root.width * 0.0012)
-        }
-
-        Text {
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.rightMargin: root.width * 0.042
-            anchors.topMargin: root.height * 0.042
-            text: "Eyes"
-            color: Qt.rgba(0.27, 0.20, 0.35, 0.31)
-            font.pixelSize: Math.max(8, Math.min(12, root.width * 0.0048))
-            font.letterSpacing: Math.max(1.2, root.width * 0.0012)
-        }
-
-        Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: root.height * 0.042
-            text: "DESKTOP HARNESS · LIVE"
-            color: Qt.rgba(0.27, 0.20, 0.35, 0.27)
-            font.pixelSize: Math.max(7, Math.min(10, root.width * 0.004))
-            font.letterSpacing: Math.max(1.1, root.width * 0.001)
-        }
-    }
-
     AnimationClock {
         id: animationTimer
         running: root.reveal > 0.001
@@ -384,7 +285,6 @@ WallpaperItem {
     }
 
     function applyState(state) {
-        root.hostState = state;
         if (typeof state.motion === "string") {
             root.simulation.setEmotion(state.motion);
         }

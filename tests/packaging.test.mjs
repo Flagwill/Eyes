@@ -5,6 +5,15 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+test('desktop wallpaper renders the eyes without status copy or HUD labels', () => {
+  const wallpaper = readFileSync(
+    'packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui/main.qml',
+    'utf8',
+  );
+  assert.doesNotMatch(wallpaper, /\bText\s*\{/);
+  assert.doesNotMatch(wallpaper, /AGENT PRESENCE|DESKTOP HARNESS|hostState/);
+});
+
 test('user install is opt-in, exports a launchable app, and restarts only failures', () => {
   const installer = readFileSync('packaging/install-user.sh', 'utf8');
   assert.match(installer, /ConditionPathExists=!\$visibility_marker/);
