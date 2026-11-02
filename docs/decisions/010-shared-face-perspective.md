@@ -15,10 +15,13 @@ Rive/Canvas vector composition and introduce another dependency.
 Keep the existing vector artwork and apply one projective face transform
 after local expression, blink, accessory and light composition. The shared
 simulation emits `frame.face` with yaw/pitch and a row-major matrix for
-`Ry * Rx * Rz` followed by perspective division. Positive yaw brings the
-left edge forward when looking right. Camera distance is 850 model units;
-yaw/pitch targets are bounded to 0.38/0.28 radians. Existing tilt supplies
-roll exactly once. Eye shapes remain continuous and primary.
+`Ry * Rx(-pitch) * Rz` followed by perspective division. Positive yaw brings
+the left edge forward when looking right. Model coordinates use the screen's
+y-down axis while the rotation basis is y-up, so the inverted pitch term makes
+positive pitch follow a downward gaze and brings the top edge toward the
+viewer. Camera distance is 850 model units; yaw/pitch targets are bounded to
+0.38/0.28 radians. Existing tilt supplies roll exactly once. Eye shapes remain
+continuous and primary.
 
 Derive direction from the spring-driven gaze and mood. Separate damped face
 springs respond behind the faster gaze, with no new random motion or clock.
@@ -43,12 +46,13 @@ wallpaper remain outside the face plane. Rive inputs and the artboard remain
 unchanged; regenerate the asset and source manifest after changing the core.
 
 ## Implementation and validation
-Unit tests verify perspective sign, mirroring, model/output equivalence,
-gaze leading the face, interruption continuity, held reduced motion, pause,
-all 28 states and the CSS matrix order. GPU tests cover all states looking
-left and right, compare the native mapping against the shared matrix, check
-actual eye pixels, accessory visibility and independence from blinking.
-The reference GLSL path has a separate real-pixel projection regression.
+Unit tests verify horizontal and vertical perspective sign, mirroring,
+model/output equivalence, gaze leading the face, interruption continuity,
+held reduced motion, pause, all 28 states and the CSS matrix order. GPU tests
+cover all states looking left and right, compare the native mapping against
+the shared matrix, check actual eye pixels, accessory visibility and
+independence from blinking. The reference GLSL path has a separate real-pixel
+projection regression.
 Run Node/WASM tests, syntax checks, desktop build, GPU suite and real-window
 DPR=2 suite. Verify the installed Plasma load and completion fade separately.
 

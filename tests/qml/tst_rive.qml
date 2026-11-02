@@ -300,6 +300,12 @@ Item {
             }
             verify(data.direction>0 ? span(-112)>span(112) : span(112)>span(-112),
                 "The near side must grow while the opposite side recedes");
+            function rowWidth(y) {
+                const a=modelPoint(-112,y),b=modelPoint(112,y);
+                return Math.hypot(a.x-b.x,a.y-b.y);
+            }
+            verify(rowWidth(-20)<rowWidth(20),
+                "Looking up must recede at the top edge instead of facing down");
         }
         function test_small_elements_share_the_face_plane() {
             eyes.simulation.follow=true;

@@ -20,7 +20,23 @@ test('the whole face uses real perspective: rightward gaze brings its left side 
   assert.equal(left.y,project(opposite,112,40).y);
   assert.equal(left.x,-project(opposite,112,40).x);
   const pitch=getFaceMatrix(0,.24,0);
-  assert.ok(project(pitch,100,80).x>project(pitch,100,-80).x);
+  assert.ok(project(pitch,100,-80).x>project(pitch,100,80).x,
+    'positive pitch (screen down) brings the top edge toward the viewer');
+  const upward=getFaceMatrix(0,-.24,0);
+  assert.ok(project(upward,100,-80).x<project(upward,100,80).x,
+    'negative pitch (screen up) recedes at the top edge');
+});
+
+test('vertical gaze and face pitch agree on screen direction', () => {
+  const sim=new EyeSimulation({reducedMotion:true});sim.autonomous=false;
+  settle(sim);sim.setPointer(0,28,true);
+  let frame=settle(sim);
+  assert.ok(frame.face.pitch>0,'looking down must produce a positive screen pitch');
+  assert.ok(project(frame.face.matrix,100,-80).x>project(frame.face.matrix,100,80).x);
+  sim.setPointer(0,-28,true);
+  frame=settle(sim);
+  assert.ok(frame.face.pitch<0,'looking up must produce a negative screen pitch');
+  assert.ok(project(frame.face.matrix,100,-80).x<project(frame.face.matrix,100,80).x);
 });
 
 test('perspective is identical in model and output coordinates at every layout size', () => {

@@ -279,11 +279,14 @@ var EyesCore = (function () {
 
   function getFaceMatrix(yaw, pitch, roll) {
     var cy = Math.cos(yaw), sy = Math.sin(yaw);
-    var cp = Math.cos(pitch), sp = Math.sin(pitch);
+    var cp = Math.cos(pitch), sp = Math.sin(-pitch);
     var cr = Math.cos(roll || 0), sr = Math.sin(roll || 0);
-    // Project Ry * Rx * Rz onto z=0. Flattening the output depth avoids Qt's
-    // implicit camera and CSS clipping disagreeing; homogeneous w retains
-    // the true perspective division. Row-major, matching Qt.matrix4x4.
+    // Project Ry * Rx(-pitch) * Rz onto z=0. The model uses screen y-down
+    // while the rotation basis is y-up, so positive pitch (gaze down) must
+    // invert to bring the top edge toward the viewer. Flattening the output
+    // depth avoids Qt's implicit camera and CSS clipping disagreeing;
+    // homogeneous w retains the true perspective division. Row-major,
+    // matching Qt.matrix4x4.
     return [cy*cr+sy*sp*sr, -cy*sr+sy*sp*cr, 0, 0,
       cp*sr, cp*cr, 0, 0,
       0, 0, 1, 0,
