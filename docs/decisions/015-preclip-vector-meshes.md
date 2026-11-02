@@ -4,7 +4,8 @@
 Accepted, 2026-10-30. Extends ADR-014's compatible batching with preclipped
 vector geometry, a combined clear/draw pass and lazy blend resources. Retains
 the Rive state machine, shared asset, output density and hardware MSAA, with
-automatic SMAA fallback on low-sample backends.
+automatic SMAA fallback on low-sample backends. ADR-017 later caps the sample
+count at four.
 
 ## Context
 After ADR-014, full-sized multisample colour attachments still had to resolve

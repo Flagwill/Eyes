@@ -35,6 +35,38 @@ test('spring morphs stay continuous and converge, including after long frame gap
   }
 });
 
+test('a spring at rest is an exact fixed point and otherwise matches the plain integrator', () => {
+  // Reference: the integrator without the rest shortcut.
+  function reference(state, target, delta, stiffness, damping) {
+    const duration = Math.max(0, Math.min(delta, 0.064));
+    const steps = Math.max(1, Math.ceil(duration / (1 / 240)));
+    const dt = duration / steps;
+    for (let i = 0; i < steps; i++) {
+      state.velocity += ((target - state.value) * stiffness - state.velocity * damping) * dt;
+      state.value += state.velocity * dt;
+    }
+  }
+  const rested = new Spring(7.25);
+  for (let i = 0; i < 100; i++) assert.equal(rested.step(7.25, 1 / 60), 7.25);
+  assert.equal(rested.velocity, 0);
+
+  const spring = new Spring(0, 150, 25);
+  const plain = {value: 0, velocity: 0};
+  const targets = [0, 1, 1, 0.35, 0, 0, -0.6, -0.6, 0];
+  let worst = 0;
+  for (const target of targets) {
+    for (let i = 0; i < 400; i++) {
+      spring.step(target, 1 / 60);
+      reference(plain, target, 1 / 60, 150, 25);
+      worst = Math.max(worst, Math.abs(spring.value - plain.value));
+    }
+  }
+  assert.ok(worst < 1e-8, `rest shortcut drifted by ${worst}`);
+  // A decaying tail settles exactly instead of integrating for ever.
+  assert.equal(spring.value, 0);
+  assert.equal(spring.velocity, 0);
+});
+
 test('all emotion transitions remain finite and converge to their new pose', () => {
   for (const from of EMOTIONS) for (const to of EMOTIONS) {
     const previous = getPose(from.id);

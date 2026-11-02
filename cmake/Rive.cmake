@@ -23,10 +23,13 @@ foreach(bridge_file IN LISTS rive_bridge_files)
         configure_file(${rive_qt_upstream}/${bridge_file} ${rive_qt_src}/${bridge_file} COPYONLY)
     endif()
 endforeach()
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveRuntime.cmake)
 file(GLOB_RECURSE rive_runtime_sources CONFIGURE_DEPENDS ${eyes_rive_runtime_SOURCE_DIR}/src/*.cpp)
 add_library(eyes-rive-runtime STATIC ${rive_runtime_sources})
 set_target_properties(eyes-rive-runtime PROPERTIES POSITION_INDEPENDENT_CODE ON AUTOMOC OFF)
-target_include_directories(eyes-rive-runtime PUBLIC ${eyes_rive_runtime_SOURCE_DIR}/include)
+# The patched blend-state header must shadow the downloaded one in every consumer.
+target_include_directories(eyes-rive-runtime BEFORE PUBLIC
+    ${eyes_rive_runtime_patched_include} ${eyes_rive_runtime_SOURCE_DIR}/include)
 target_compile_definitions(eyes-rive-runtime PRIVATE _RIVE_INTERNAL_)
 file(GLOB rive_qt_sources CONFIGURE_DEPENDS
     ${rive_qt_src}/*.h ${rive_qt_src}/*.cpp
@@ -34,6 +37,7 @@ file(GLOB rive_qt_sources CONFIGURE_DEPENDS
     ${rive_qt_src}/rhi/*.h ${rive_qt_src}/rhi/*.cpp)
 list(FILTER rive_qt_sources EXCLUDE REGEX "(riveqtquickplugin|rivequickpainteditem|riveqtpaint)\\.(h|cpp)$")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveRuntime.cmake
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveScheduling.cmake
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveAntialiasing.cmake
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveBatching.cmake
@@ -61,7 +65,17 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/RiveQuality.cmake)
 qt_add_qml_module(EyesRive URI EyesRive VERSION 1.0 SHARED PLUGIN_TARGET EyesRive
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/wallpaper-ui/EyesRive
     SOURCES ${rive_qt_sources} desktop/rive-settings.h)
-target_compile_definitions(EyesRive PRIVATE RIVEQTQUICKITEM_LIBRARY QT_NO_DEBUG_OUTPUT)
+# Four coverage samples already give the edge quality Eyes accepts (ADR-017) at
+# half the multisample memory and bandwidth of eight. Set 8 for a quality
+# reference or 2 to force the SMAA fallback; the nearest supported count at or
+# below the cap is used.
+set(EYES_RIVE_MAX_MSAA 4 CACHE STRING "Highest MSAA sample count for the Rive target (2, 4 or 8)")
+set_property(CACHE EYES_RIVE_MAX_MSAA PROPERTY STRINGS 2 4 8)
+if(NOT EYES_RIVE_MAX_MSAA MATCHES "^(2|4|8)$")
+    message(FATAL_ERROR "EYES_RIVE_MAX_MSAA must be 2, 4 or 8, not '${EYES_RIVE_MAX_MSAA}'")
+endif()
+target_compile_definitions(EyesRive PRIVATE RIVEQTQUICKITEM_LIBRARY QT_NO_DEBUG_OUTPUT
+    EYES_RIVE_MAX_MSAA=${EYES_RIVE_MAX_MSAA})
 target_include_directories(EyesRive PRIVATE ${rive_qt_src} ${rive_qt_src}/renderer
     ${eyes_rive_runtime_SOURCE_DIR}/utils ${CMAKE_CURRENT_SOURCE_DIR}/desktop)
 target_link_libraries(EyesRive PRIVATE eyes-rive-runtime Qt6::Core Qt6::CorePrivate

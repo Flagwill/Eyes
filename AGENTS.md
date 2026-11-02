@@ -71,10 +71,11 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `.beads/`：Beads issue 数据库配置、Git hooks 与受版本控制的元数据；Dolt 数据库和运行时文件不提交。
 - `docs/AGENT-MEMORY.md`：Serena、Beads 与 Codex 的记忆边界、启动协议和验证方式。
 - `packaging/plasma-wallpaper/org.eyes.wallpaper/`：Plasma 壁纸包；`main.qml` 管理磨砂缓存和状态桥，`EyeScene.qml` 适配共享模型，`eye.frag` 绘制 GPU 眼睛。
-- `RiveEyeScene.qml` 为产品默认场景，使用原生 GPU 插件；`EyeScene.qml` / `eye.frag` 为几何参考。两条路径均须运行 GPU 回归。Rive 使用实际输出尺寸的目标，禁止固定低分辨率画面拉伸到桌面。
-- Rive 桌面场景默认 Automatic 抗锯齿：`cmake/RiveAntialiasing.cmake` 在独立离屏目标中启用显卡支持的 8×/4×/2× 多重采样，`cmake/RiveQuality.cmake` 在至少 4× 时省去额外 SMAA 后处理，低采样后端自动补 SMAA；显式 SMAA 模式仍可用于质量参考。此取舍经用户允许轻微、难以察觉的质量差异后采用。颜色、模板与绘制管线采样数必须一致，最终合成管线匹配 Qt 实际目标。最终线性取样，预乘透明度只合成一次。路径精度为 4096 单位。GPU 回归覆盖全部 28 种姿态和亚像素位移，检查实际中间覆盖、狭窄过渡和正确淡出，不能只检查轮廓位置。
+- `RiveEyeScene.qml` 为产品默认场景，使用原生 GPU 插件；`EyeScene.qml` / `eye.frag` 为几何参考。两条路径均须运行 GPU 回归。Rive 使用实际输出尺寸的目标，禁止固定低分辨率画面拉伸到桌面；目标像素比取窗口实际 `Window.devicePixelRatio`（Qt 6.11+，缺失时回落 `Screen.devicePixelRatio`），因为 Wayland 分数缩放下后者被取整（缩放 1.4 时为 2），会让多重采样目标多出约一倍面积，见 ADR-016。
+- Rive 桌面场景默认 Automatic 抗锯齿：`cmake/RiveAntialiasing.cmake` 在独立离屏目标中启用显卡支持的多重采样，上限由 CMake 选项 `EYES_RIVE_MAX_MSAA` 决定（默认 4，可设 2/4/8；8× 仅用于画质对照，见 ADR-017），`cmake/RiveQuality.cmake` 在至少 4× 时省去额外 SMAA 后处理，低采样后端自动补 SMAA；显式 SMAA 模式仍可用于质量参考。此取舍经用户允许轻微、难以察觉的质量差异后采用。颜色、模板与绘制管线采样数必须一致，最终合成管线匹配 Qt 实际目标。最终线性取样，预乘透明度只合成一次。路径精度为 4096 单位。GPU 回归覆盖全部 28 种姿态和亚像素位移，检查实际中间覆盖、狭窄过渡和正确淡出，不能只检查轮廓位置。
 - `cmake/RiveBatching.cmake` 只合并连续、source-over 且完整裁切几何相同的路径；裁切变化或进入/离开裁切层必须重开通道并清模板。保留绘制顺序、原有 stencil/pipeline 与动态高光，不能让高光模板遮住眼面上的放大镜等道具。性能对比必须确认物理屏幕已点亮；熄屏时模型仍可能报 60 FPS，但没有实际 GPU 提交。见 ADR-014。
-- `cmake/RiveGeometry.cmake` / `desktop/eyes-triangle-clip.h` 在已有三角网格上预裁切向量，保留原始 paint 坐标插值；不要用低精度曲线布尔运算替代，不要改变共享眼形。向量裁切完成后清空节点 GPU clip，让清屏和绘制合并为一个颜色通道。`cmake/RiveResources.cmake` 仅在实际需要读取目标颜色的混合模式出现时分配 B / intermediate 多重采样面；首次分配后重绑合成和 SMAA 输入。保留原生输出密度与上述 Automatic 策略，不能关闭低采样后端的 SMAA 兜底；新增复杂裁切须检查 CPU 几何开销。几何回归使用 `cmake --build build --target eyes-geometry-test && build/eyes-geometry-test`，完整约定见 ADR-015。
+- `cmake/RiveGeometry.cmake` / `cmake/rive-clip-cache.cpp` / `desktop/eyes-triangle-clip.h` 在已有三角网格上预裁切向量，并按整个裁切栈（路径与矩阵，按值比较）缓存三角化结果，保留原始 paint 坐标插值；不要用低精度曲线布尔运算替代，不要改变共享眼形。向量裁切完成后清空节点 GPU clip，让清屏和绘制合并为一个颜色通道。`cmake/RiveResources.cmake` 仅在实际需要读取目标颜色的混合模式出现时分配 B / intermediate 多重采样面；首次分配后重绑合成和 SMAA 输入。保留原生输出密度与上述 Automatic 策略，不能关闭低采样后端的 SMAA 兜底；新增复杂裁切须检查 CPU 几何开销。几何回归使用 `cmake --build build --target eyes-geometry-test && build/eyes-geometry-test`，完整约定见 ADR-015。
+- `cmake/RiveRuntime.cmake` 在构建目录生成补丁后的 `blend_state_instance.hpp` 并置于下载头文件之前：混合动画推进时不再扫描 keyed 回调（零权重动画占渲染线程约三分之一忙时）。仅在素材没有 Rive 事件时成立，`tests/rive.test.mjs` 守护这一点；下载的源码保持原样，见 ADR-016。
 - `tests/qml/tst_eyes.qml`：Qt 6 GPU 实际像素、表情、透明边界和眨眼测试。
 - `bin/eyes`：本地控制客户端；连接 `$XDG_RUNTIME_DIR/eyes.sock` 并按需启动宿主。
 - `packaging/migrate-legacy-install.sh`：停止并移除旧版本的命令、插件与自启动项，不删除壁纸图片或用户数据。
@@ -161,7 +162,7 @@ eyes status
 
 GPU 改动再运行 `npm run desktop:test`。光标桥修改时先停止桌面后台，再运行 `npm run desktop:cursor:test`；它在独立 D-Bus 和临时运行目录测试真实后台，仍需独占本机桥接端口。使用 `/usr/lib/qt6/bin` 下的 Qt 6 工具（其他发行版可设置 `QT6_BIN_DIR`）；本机 PATH 中同名 `qmllint`、`qmltestrunner` 可能指向 Qt 5。
 
-涉及输出尺寸或像素密度时，运行 `npm run desktop:hidpi:test`。它使用实际 X11 / XWayland 窗口；Qt 6.12 的离屏高 DPI 截图有独立复现的问题，不能据其裁切画面判断 Rive 失败。原生目标尺寸必须包含 `Screen.devicePixelRatio`，并映射回相同逻辑构图。
+涉及输出尺寸或像素密度时，运行 `npm run desktop:hidpi:test`。它使用实际 X11 / XWayland 窗口；Qt 6.12 的离屏高 DPI 截图有独立复现的问题，不能据其裁切画面判断 Rive 失败。原生目标尺寸必须包含窗口实际像素比（`Window.devicePixelRatio`，缺失时 `Screen.devicePixelRatio`），并映射回相同逻辑构图。
 
 主桌面不曝光 QML 测试窗口时，使用隔离的虚拟 KWin 运行完整 `tests/qml`，不要用 offscreen 结果替代 GPU 回归。壁纸生命周期使用 `npm run desktop:wallpaper:test`；它和光标/活动测试一样需要先停止真实宿主以独占桥接端口。
 

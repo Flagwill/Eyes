@@ -19,9 +19,10 @@ function(eyes_replace_rive_rhi before after)
 endfunction()
 
 # Geometry coverage must not depend on Plasma's window-wide sample count.
+# The highest sample count considered is EYES_RIVE_MAX_MSAA (see cmake/Rive.cmake).
 # Keep the final pass compatible with its own (possibly single-sample) target.
 eyes_replace_rive_rhi("    if (!m_stencilClippingBuffer) {\n        m_stencilClippingBuffer = rhi->newRenderBuffer"
-    "    sampleCount = 1;\n    if (rhi->backend() != QRhi::Metal && rhi->isFeatureSupported(QRhi::MultisampleRenderBuffer)) {\n        const auto supported = rhi->supportedSampleCounts();\n        for (int candidate : {8, 4, 2}) {\n            if (supported.contains(candidate)) { sampleCount = candidate; break; }\n        }\n    }\n    m_sampleCount = sampleCount;\n    if (!m_stencilClippingBuffer) {\n        m_stencilClippingBuffer = rhi->newRenderBuffer")
+    "    sampleCount = 1;\n    if (rhi->backend() != QRhi::Metal && rhi->isFeatureSupported(QRhi::MultisampleRenderBuffer)) {\n        const auto supported = rhi->supportedSampleCounts();\n        for (int candidate : {8, 4, 2}) {\n            if (candidate > EYES_RIVE_MAX_MSAA) continue;\n            if (supported.contains(candidate)) { sampleCount = candidate; break; }\n        }\n    }\n    m_sampleCount = sampleCount;\n    if (!m_stencilClippingBuffer) {\n        m_stencilClippingBuffer = rhi->newRenderBuffer")
 eyes_replace_rive_rhi("    clipPipeLine->setRenderPassDescriptor(renderPassDescriptor);"
     "    clipPipeLine->setSampleCount(m_sampleCount);\n    clipPipeLine->setRenderPassDescriptor(renderPassDescriptor);")
 eyes_replace_rive_rhi("    drawPipeLine->setRenderPassDescriptor(renderPassDescriptor);"

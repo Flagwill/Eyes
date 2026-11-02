@@ -35,6 +35,22 @@ test('shipped Rive asset matches the shared source and has all runtime controls'
   try{assert.deepEqual(Object.keys(current.inputs),manifest.inputs);}finally{current.destroy();}
 });
 
+test('the shipped asset reports no keyed Rive events in any expression',()=>{
+  // cmake/RiveRuntime.cmake skips keyed-callback scanning for blend animations
+  // in the native runtime. That is only valid while the asset has no events.
+  const current=scene();
+  try {
+    for(const expression of EXPRESSIONS) {
+      const sim=new EyeSimulation({random:()=>.5});
+      sim.setEmotion(expression.id);
+      for(let i=0;i<150;i++) {
+        current.advance(sim,1/60);
+        assert.equal(current.machine.reportedEventCount(),0,`${expression.id} reported a keyed event`);
+      }
+    }
+  } finally {current.destroy();}
+});
+
 test('actual Rive runtime converges to every shared pose through interrupted spring blends',()=>{
   const current=scene(), sim=new EyeSimulation({reducedMotion:true});
   try {

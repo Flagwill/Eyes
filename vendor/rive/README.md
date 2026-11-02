@@ -44,7 +44,8 @@ The default native `Automatic` mode uses hardware MSAA alone at four or more
 samples, avoiding three full-target SMAA passes and their textures. On lower
 sample counts it adds SMAA. Explicit `SMAA` remains available for reference
 captures. This small edge-filter trade-off was authorized for lower GPU cost;
-output dimensions and MSAA sample selection are unchanged (ADR-015).
+output dimensions are unchanged (ADR-015). ADR-017 caps the sample count at four
+(`EYES_RIVE_MAX_MSAA`, default 4; 2 and 8 are accepted), which still skips SMAA.
 
 `cmake/RiveScheduling.cmake` adapts the pinned bridge for resident operation.
 The build mirrors upstream files into an ignored adapter directory so all
@@ -76,6 +77,18 @@ stencil path. With explicit SMAA retained for comparison, a 140-frame DPR=2
 capture found at most a one-level 8-bit colour difference in 1,333 pixels out
 of 437 million. Automatic-mode edge differences are measured separately in the
 performance report. `eyes-geometry-test` checks coverage and paint transforms.
+
+ADR-016 changes two further things. `cmake/RiveRuntime.cmake` writes a patched
+copy of the runtime's header-only `blend_state_instance.hpp` into the build
+directory and places it ahead of the downloaded MIT include path; blend
+animations still advance and apply as before but no longer scan keyed callbacks,
+which only matters for Rive events, and the shipped asset has none (a test
+fails if one is reported). The downloaded runtime is not edited. The bridge's
+clip triangulation is cached by the full clip stack (`cmake/rive-clip-cache.cpp`),
+so each clipped highlight no longer re-triangulates its eye outline; actual-GPU
+captures of all 28 states before and after were pixel identical for both
+changes. The wallpaper scene also sizes the native target from the window's
+effective device pixel ratio instead of the rounded screen ratio.
 
 The GPU regression covers all 28 states at three fractional pixel
 positions, requires most sampled columns to have intermediate coverage, and

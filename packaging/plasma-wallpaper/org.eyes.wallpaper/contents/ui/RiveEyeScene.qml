@@ -10,7 +10,13 @@ Item {
     property var frame: null
     readonly property var pose: frame ? frame.pose : EyeCore.EyesCore.getPose("idle")
     readonly property var layout: EyeCore.EyesCore.getLayout(width, height, true)
-    readonly property real renderPixelRatio: Math.max(1, Screen.devicePixelRatio)
+    // Wayland rounds Screen.devicePixelRatio up to an integer (2 at KDE scale
+    // 1.4) while the window renders at the compositor's fractional scale.
+    // Size the vector target from the window's effective ratio (Qt 6.11+) and
+    // fall back to the screen ratio on older Qt; see ADR-016.
+    readonly property real windowPixelRatio: Window.window ? Number(Window.window.devicePixelRatio) : NaN
+    readonly property real renderPixelRatio: Math.max(1,
+        windowPixelRatio > 0 ? windowPixelRatio : Screen.devicePixelRatio)
     readonly property var faceMatrix: EyeCore.EyesCore.getFaceScreenMatrix(
         frame && frame.face ? frame.face : ({matrix: EyeCore.EyesCore.getFaceMatrix(0, 0, 0)}), layout)
     readonly property alias renderer: riveItem

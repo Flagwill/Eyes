@@ -43,6 +43,12 @@ var EyesCore = (function () {
     {id:'complete', base:'happy', group:'收尾', name:'好耶，完成啦', short:'完成', description:'完成啦！这份成果，一起收下。'},
   ];
   var EXPRESSIONS = EMOTIONS.concat(ACTIVITIES);
+  var RIVE_VARIANTS = ['still', 'act', 'entry', 'follow', 'resolve'];
+  // Rive input names are fixed; build them once instead of concatenating and
+  // interning 140 strings in every simulation frame.
+  var RIVE_VARIANT_KEYS = EXPRESSIONS.map(function (expression) {
+    return RIVE_VARIANTS.map(function (variant) { return expression.id + variant; });
+  });
 
   var BASE = {
     lx: -112, ly: 0, lw: 146, lh: 136, lr: 0,
@@ -685,6 +691,8 @@ var EyesCore = (function () {
     return {x:-a*3.8+c*4.3,y:-a*.8+c*.6};
   }
 
+  var SPRING_REST = 1e-9;
+
   function Spring(value, stiffness, damping) {
     this.value = value;
     this.velocity = 0;
@@ -693,6 +701,14 @@ var EyesCore = (function () {
   }
 
   Spring.prototype.step = function (target, delta) {
+    // A spring at rest on its target is a fixed point of the integrator. Most
+    // expression, entry and action weights sit there; skip their sub-steps and
+    // snap sub-nanometre residue so decaying tails do not integrate forever.
+    if (Math.abs(this.value - target) < SPRING_REST && Math.abs(this.velocity) < SPRING_REST) {
+      this.value = target;
+      this.velocity = 0;
+      return target;
+    }
     var duration = Math.max(0, Math.min(delta, 0.064));
     var steps = Math.max(1, Math.ceil(duration / (1 / 240)));
     var dt = duration / steps;
@@ -973,7 +989,7 @@ var EyesCore = (function () {
         // Direct blends apply in order. Convert barycentric weights to Rive's
         // successive interpolation factors, so even interrupted morphs blend
         // correctly and do not retain geometry from the preceding frame.
-        riveInputs[emotionId + ['still', 'act', 'entry', 'follow', 'resolve'][variant]] =
+        riveInputs[RIVE_VARIANT_KEYS[e][variant]] =
           accumulated > 0 ? 100 * contribution / accumulated : 0;
       }
     }

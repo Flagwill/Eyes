@@ -1,0 +1,245 @@
+{
+  "date": "2026-11-02",
+  "baseline": "commit 9d09ecb build (vector target sized from Screen.devicePixelRatio=2)",
+  "candidate": "window-ratio target, no keyed-callback scan for blend animations, clip triangulation cache, precomputed inputs and settled-spring shortcut",
+  "hardware": "AMD Radeon 680M (Rembrandt), Mesa 26.2.5, Qt 6.12.0, KWin 6.8.1 virtual output",
+  "scene": {
+    "activity": "editing",
+    "window_logical": [
+      1592,
+      962
+    ],
+    "output_scale": 1.4,
+    "screen_devicePixelRatio": 2,
+    "window_devicePixelRatio": 1.4,
+    "animation_fps": 60
+  },
+  "method": "eyes-render-benchmark in an isolated virtual KWin with its own XDG_CONFIG_HOME; before/after runs interleaved 6x; 7 s sampling after 5.5 s warm-up; CPU from /proc per-thread ticks (one core = 100%) divided by the measured frame rate to give ms per frame, because background desktop load varied the achievable frame rate between 34 and 51 fps; GPU time from Qt timestamps; GPU engine and memory from DRM fdinfo.",
+  "runs": {
+    "before": [
+      {
+        "fps": 48.9,
+        "cpu_pct": 19.6,
+        "render_pct": 10.7,
+        "main_pct": 6.4,
+        "cpu_ms_per_frame": 4.004,
+        "render_ms_per_frame": 2.186,
+        "main_ms_per_frame": 1.308,
+        "gpu_mean_ms": 2.783,
+        "gpu_p95_ms": 3.475,
+        "gpu_engine_ms_per_frame": 2.875,
+        "gtt_mib": 565.5
+      },
+      {
+        "fps": 51.5,
+        "cpu_pct": 23.3,
+        "render_pct": 12.6,
+        "main_pct": 7.6,
+        "cpu_ms_per_frame": 4.529,
+        "render_ms_per_frame": 2.449,
+        "main_ms_per_frame": 1.477,
+        "gpu_mean_ms": 2.665,
+        "gpu_p95_ms": 3.443,
+        "gpu_engine_ms_per_frame": 2.774,
+        "gtt_mib": 565.9
+      },
+      {
+        "fps": 51.3,
+        "cpu_pct": 20.7,
+        "render_pct": 11.6,
+        "main_pct": 6.7,
+        "cpu_ms_per_frame": 4.034,
+        "render_ms_per_frame": 2.261,
+        "main_ms_per_frame": 1.306,
+        "gpu_mean_ms": 2.811,
+        "gpu_p95_ms": 3.402,
+        "gpu_engine_ms_per_frame": 2.843,
+        "gtt_mib": 565.5
+      },
+      {
+        "fps": 50.9,
+        "cpu_pct": 21.0,
+        "render_pct": 11.6,
+        "main_pct": 6.9,
+        "cpu_ms_per_frame": 4.123,
+        "render_ms_per_frame": 2.277,
+        "main_ms_per_frame": 1.355,
+        "gpu_mean_ms": 2.881,
+        "gpu_p95_ms": 3.568,
+        "gpu_engine_ms_per_frame": 2.986,
+        "gtt_mib": 571.9
+      },
+      {
+        "fps": 50.9,
+        "cpu_pct": 20.9,
+        "render_pct": 11.6,
+        "main_pct": 6.7,
+        "cpu_ms_per_frame": 4.107,
+        "render_ms_per_frame": 2.279,
+        "main_ms_per_frame": 1.316,
+        "gpu_mean_ms": 2.736,
+        "gpu_p95_ms": 3.24,
+        "gpu_engine_ms_per_frame": 2.727,
+        "gtt_mib": 555.5
+      },
+      {
+        "fps": 42.5,
+        "cpu_pct": 19.0,
+        "render_pct": 10.0,
+        "main_pct": 6.4,
+        "cpu_ms_per_frame": 4.466,
+        "render_ms_per_frame": 2.351,
+        "main_ms_per_frame": 1.504,
+        "gpu_mean_ms": 2.372,
+        "gpu_p95_ms": 3.221,
+        "gpu_engine_ms_per_frame": 2.449,
+        "gtt_mib": 567.9
+      }
+    ],
+    "after": [
+      {
+        "fps": 43.6,
+        "cpu_pct": 14.3,
+        "render_pct": 6.3,
+        "main_pct": 5.6,
+        "cpu_ms_per_frame": 3.276,
+        "render_ms_per_frame": 1.443,
+        "main_ms_per_frame": 1.283,
+        "gpu_mean_ms": 1.519,
+        "gpu_p95_ms": 2.205,
+        "gpu_engine_ms_per_frame": 1.657,
+        "gtt_mib": 334.6
+      },
+      {
+        "fps": 51.4,
+        "cpu_pct": 16.4,
+        "render_pct": 7.6,
+        "main_pct": 5.7,
+        "cpu_ms_per_frame": 3.188,
+        "render_ms_per_frame": 1.477,
+        "main_ms_per_frame": 1.108,
+        "gpu_mean_ms": 1.451,
+        "gpu_p95_ms": 2.039,
+        "gpu_engine_ms_per_frame": 1.637,
+        "gtt_mib": 316.2
+      },
+      {
+        "fps": 42.6,
+        "cpu_pct": 12.4,
+        "render_pct": 5.4,
+        "main_pct": 4.9,
+        "cpu_ms_per_frame": 2.911,
+        "render_ms_per_frame": 1.268,
+        "main_ms_per_frame": 1.15,
+        "gpu_mean_ms": 1.475,
+        "gpu_p95_ms": 2.031,
+        "gpu_engine_ms_per_frame": 1.448,
+        "gtt_mib": 334.6
+      },
+      {
+        "fps": 47.3,
+        "cpu_pct": 16.4,
+        "render_pct": 7.6,
+        "main_pct": 6.0,
+        "cpu_ms_per_frame": 3.468,
+        "render_ms_per_frame": 1.607,
+        "main_ms_per_frame": 1.269,
+        "gpu_mean_ms": 1.531,
+        "gpu_p95_ms": 2.081,
+        "gpu_engine_ms_per_frame": 1.7,
+        "gtt_mib": 322.2
+      },
+      {
+        "fps": 51.1,
+        "cpu_pct": 16.3,
+        "render_pct": 7.9,
+        "main_pct": 5.6,
+        "cpu_ms_per_frame": 3.192,
+        "render_ms_per_frame": 1.547,
+        "main_ms_per_frame": 1.097,
+        "gpu_mean_ms": 1.468,
+        "gpu_p95_ms": 1.91,
+        "gpu_engine_ms_per_frame": 1.516,
+        "gtt_mib": 322.6
+      },
+      {
+        "fps": 45.2,
+        "cpu_pct": 14.4,
+        "render_pct": 6.4,
+        "main_pct": 5.6,
+        "cpu_ms_per_frame": 3.188,
+        "render_ms_per_frame": 1.417,
+        "main_ms_per_frame": 1.24,
+        "gpu_mean_ms": 1.443,
+        "gpu_p95_ms": 1.913,
+        "gpu_engine_ms_per_frame": 1.457,
+        "gtt_mib": 324.6
+      }
+    ]
+  },
+  "mean": {
+    "before": {
+      "fps": 49.333,
+      "cpu_pct": 20.75,
+      "render_pct": 11.35,
+      "main_pct": 6.783,
+      "cpu_ms_per_frame": 4.21,
+      "render_ms_per_frame": 2.3,
+      "main_ms_per_frame": 1.378,
+      "gpu_mean_ms": 2.708,
+      "gpu_p95_ms": 3.392,
+      "gpu_engine_ms_per_frame": 2.776,
+      "gtt_mib": 565.367
+    },
+    "after": {
+      "fps": 46.867,
+      "cpu_pct": 15.033,
+      "render_pct": 6.867,
+      "main_pct": 5.567,
+      "cpu_ms_per_frame": 3.204,
+      "render_ms_per_frame": 1.46,
+      "main_ms_per_frame": 1.191,
+      "gpu_mean_ms": 1.481,
+      "gpu_p95_ms": 2.03,
+      "gpu_engine_ms_per_frame": 1.569,
+      "gtt_mib": 325.8
+    }
+  },
+  "pixel_regression": {
+    "frames": 112,
+    "pixels": 148332800,
+    "plugin_changes_differing_pixels": 0,
+    "simulation_change_differing_pixels": 0,
+    "renderer_determinism_differing_pixels": 0,
+    "target_ratio_change": {
+      "differing_pixels": 2297417,
+      "percent": 1.5488,
+      "max_channel_diff": 77,
+      "worst_frame": "complete-d (blink line)"
+    }
+  },
+  "simulation_equivalence": {
+    "frames": 5040,
+    "max_rive_input_diff": 1.1e-08,
+    "max_pose_diff": 9.7e-10
+  },
+  "profile": {
+    "render_thread_busy_samples": 318,
+    "keyed_callbacks_share_before": 0.365,
+    "triangulation_share_before": 0.267,
+    "triangulation_share_after_callbacks_removed": 0.547
+  },
+  "tests": {
+    "npm_test": 87,
+    "qt_gpu_regression": 304,
+    "geometry_test": "pass"
+  },
+  "change_pct": {
+    "cpu_ms_per_frame": -23.9,
+    "render_ms_per_frame": -36.5,
+    "main_ms_per_frame": -13.6,
+    "gpu_mean_ms": -45.3,
+    "gpu_engine_ms_per_frame": -43.5,
+    "gtt_mib": -42.4
+  }
+}
