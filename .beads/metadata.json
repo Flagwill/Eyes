@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "eyes",
+  "project_id": "8ba3f3c6-a385-412b-bb60-436535c8c088"
+}

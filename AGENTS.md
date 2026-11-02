@@ -29,6 +29,23 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - 托盘“退出”和 `eyes quit` 先写入退出抑制状态再结束宿主；systemd 用户服务只能
   `Restart=on-failure`，不得用 `Restart=always` 把用户主动退出重新拉起。
 
+## Agent 项目记忆与任务状态
+
+- 新 Codex 会话先运行 `bd prime`，再处理非平凡开发任务。它提供当前任务、
+  依赖、持久记忆与会话恢复说明；不要把任务状态改写到 Markdown TODO 或注释中。
+- Serena 是代码语义检索、符号编辑和长期架构记忆层。连接后先激活当前目录并读取
+  `mem:core`，再按其中引用读取当前任务需要的记忆。
+- 非平凡工作先查 `bd ready --json`；需要新增工作时运行 `bd create`，开始执行时
+  用 `bd update <id> --claim`。完成且验证通过后再 `bd close <id>`。
+- 记忆归属：Beads 保存任务、验收条件、依赖、进度和 `bd remember` 操作知识；
+  Serena 保存稳定的代码地图、架构不变量、故障定位路径和跨会话设计知识；
+  `AGENTS.md` 只保留强制规则与入口；已接受的架构决策仍以 ADR 为准。
+- 只把可复用、非显而易见且预计稳定的信息写入长期记忆。不要保存凭据、token、
+  用户数据、机器相关路径、临时日志或一次性任务细节。
+- 不要在仓库内再创建 `.codex/hooks.json`。用户级 `~/.codex/hooks.json` 已驱动
+  Eyes 生命周期，项目级重复 hooks 会导致状态重复；本项目的 Beads 上下文通过
+  `bd prime` 显式加载，Serena 通过项目级 MCP 接入。
+
 ## 目录地图
 
 - `eyes-core.js`：共享眼睛几何、表情参数、弹簧、高光、眨眼和 Canvas 渲染核心。
@@ -49,6 +66,10 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - 表情通过共享眼睑参数及中段控制点驱动五点样条，上下眼睑各用 `compileSmooth` 编译为四段曲率连续的三次系数；端点切线取弯曲与斜率的解析值。原始 `compile` 仅保留上游一致性回归，不能恢复重复端点造成的反向肩部曲率。Rive 使用等价三次顶点和切线，参考 Canvas/GLSL 继续回归。不要恢复独立二次曲线近似，不要用大角度整眼旋转代替情绪。按用户要求默认启用少量眉线、问号、星星等辅助元素；眉毛须略长于眼宽，以直线切面保留厚眉头、轻折峰和渐细眉尾。思考状态不显示眼镜或独立符号，由半眯眼形与侧上方视线表达；Rive 必须把辅助层绘制在眼形上方，Canvas 与 Rive 保持同一层级。它们补充眼形，共用表情弹簧与 Rive 素材，禁止单独随机飘动或闪烁。无字体路径与姿态统一定义在核心的 accentDesigns / getAccentStates；辅助层不随眨眼压扁，减少动态效果保留静态提示，显式 accents:false 可关闭。调试台缩略图使用同一素材。
 - `desktop/main.cpp`：无窗口 Qt 后台、Unix socket、WebSocket、D-Bus、托盘和按屏幕映射光标。
 - `integrations/codex/hooks.json`、`integrations/codex/eyes-codex-hook.py`：用户级 Codex 生命周期适配器源；安装到 `~/.codex`，只调用现有 Eyes 命令，错误必须静默并以 0 退出。不要在仓库内保留第二份 `.codex` hook 入口，否则已信任的项目级配置会与用户级配置重复驱动状态。
+- `.codex/config.toml`：项目级 Codex MCP 配置，仅注册 Serena；不承载 lifecycle hooks。
+- `.serena/`：Serena 项目配置与分层项目记忆；`cache/` 和 `project.local.yml` 为本地状态。
+- `.beads/`：Beads issue 数据库配置、Git hooks 与受版本控制的元数据；Dolt 数据库和运行时文件不提交。
+- `docs/AGENT-MEMORY.md`：Serena、Beads 与 Codex 的记忆边界、启动协议和验证方式。
 - `packaging/plasma-wallpaper/org.eyes.wallpaper/`：Plasma 壁纸包；`main.qml` 管理磨砂缓存和状态桥，`EyeScene.qml` 适配共享模型，`eye.frag` 绘制 GPU 眼睛。
 - `RiveEyeScene.qml` 为产品默认场景，使用原生 GPU 插件；`EyeScene.qml` / `eye.frag` 为几何参考。两条路径均须运行 GPU 回归。Rive 使用实际输出尺寸的目标，禁止固定低分辨率画面拉伸到桌面。
 - Rive 桌面场景默认 Automatic 抗锯齿：`cmake/RiveAntialiasing.cmake` 在独立离屏目标中启用显卡支持的 8×/4×/2× 多重采样，`cmake/RiveQuality.cmake` 在至少 4× 时省去额外 SMAA 后处理，低采样后端自动补 SMAA；显式 SMAA 模式仍可用于质量参考。此取舍经用户允许轻微、难以察觉的质量差异后采用。颜色、模板与绘制管线采样数必须一致，最终合成管线匹配 Qt 实际目标。最终线性取样，预乘透明度只合成一次。路径精度为 4096 单位。GPU 回归覆盖全部 28 种姿态和亚像素位移，检查实际中间覆盖、狭窄过渡和正确淡出，不能只检查轮廓位置。
