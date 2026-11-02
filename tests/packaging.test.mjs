@@ -117,13 +117,13 @@ wallpaperplugin=org.kde.image
 Image=file:///panel.jpg
 `);
   writeFileSync(join(mocks, 'kwriteconfig6'),
-    '#!/bin/sh\nprintf "kwrite %s\\n" "$*" >> "$EYES_TEST_RECORD"\n', { mode: 0o755 });
+    '#!/bin/sh\n[ -f "$EYES_TEST_STATE" ] || printf "config-before-state\\n" >> "$EYES_TEST_RECORD"\nprintf "kwrite %s\\n" "$*" >> "$EYES_TEST_RECORD"\n', { mode: 0o755 });
   chmodSync(join(mocks, 'kwriteconfig6'), 0o755);
   writeFileSync(join(mocks, 'qdbus6'),
     '#!/bin/sh\nprintf "qdbus %s\\n" "$*" >> "$EYES_TEST_RECORD"\n', { mode: 0o755 });
   chmodSync(join(mocks, 'qdbus6'), 0o755);
   const env = { ...process.env, PATH: `${mocks}:${process.env.PATH}`,
-    EYES_TEST_RECORD: calls };
+    EYES_TEST_RECORD: calls, EYES_TEST_STATE: state };
   const run = () => JSON.parse(execFileSync('python3', [
     'packaging/configure-plasma-wallpaper.py', '--config', config,
     '--state-file', state, '--mount', '--activate-runtime', '--json',
@@ -131,6 +131,8 @@ Image=file:///panel.jpg
   const result = run();
   const actions = result.actions.flat().join(' ');
   assert.equal(result.ok, true);
+  assert.doesNotMatch(readFileSync(calls, 'utf8'), /config-before-state/,
+    'the origin state must be durable before any wallpaper config changes');
   assert.match(actions, /--group Wallpaper --group org\.eyes\.wallpaper --group General --key Image --notify file:\/\/\/pre-mount\.jpg/);
   assert.match(actions, /--key Color --notify #112233/);
   assert.match(actions, /--key FillMode --notify 1/);

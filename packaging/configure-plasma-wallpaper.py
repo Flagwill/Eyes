@@ -371,6 +371,27 @@ def desired_eyes_values(
     }
 
 
+def value_action(
+    executable: str,
+    config_path: Path,
+    group: list[str],
+    key: str,
+    value: str,
+) -> list[str]:
+    args = [executable, "--file", str(config_path)]
+    for item in group:
+        args.extend(["--group", item])
+    args.extend(["--key", key, "--notify", value])
+    return args
+
+
+def apply_action(action: list[str], *, dry_run: bool) -> None:
+    if dry_run:
+        print("would run:", " ".join(action), file=sys.stderr)
+    else:
+        subprocess.run(action, check=True)
+
+
 def write_value(
     executable: str,
     config_path: Path,
@@ -380,15 +401,9 @@ def write_value(
     *,
     dry_run: bool,
 ) -> list[str]:
-    args = [executable, "--file", str(config_path)]
-    for item in group:
-        args.extend(["--group", item])
-    args.extend(["--key", key, "--notify", value])
-    if dry_run:
-        print("would run:", " ".join(args), file=sys.stderr)
-    else:
-        subprocess.run(args, check=True)
-    return args
+    action = value_action(executable, config_path, group, key, value)
+    apply_action(action, dry_run=dry_run)
+    return action
 
 
 def restore_containment(
@@ -533,25 +548,23 @@ def mount(
             if current_eyes.get(key, "").strip() == value:
                 continue
             actions.append(
-                write_value(
+                value_action(
                     executable,
                     args.config,
                     eyes_group,
                     key,
                     value,
-                    dry_run=args.dry_run,
                 )
             )
             containment_changed = True
         if current_plugin != WALLPAPER_PLUGIN:
             actions.append(
-                write_value(
+                value_action(
                     executable,
                     args.config,
                     common,
                     "wallpaperplugin",
                     WALLPAPER_PLUGIN,
-                    dry_run=args.dry_run,
                 )
             )
             containment_changed = True
@@ -746,6 +759,8 @@ def main() -> int:
             if not args.dry_run:
                 # Persist the origin before changing any live or saved plugin.
                 write_state(args.state_file, state["containments"])
+            for action in actions:
+                apply_action(action, dry_run=args.dry_run)
         else:
             state, changed, actions, containments, runtime_plugins = restore(
                 args,
