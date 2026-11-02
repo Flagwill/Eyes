@@ -150,38 +150,39 @@ IMMEDIATE_COMMANDS = {
 }
 
 
+def empty_state() -> dict[str, Any]:
+    return {
+        "last_dispatched_command": "",
+        "last_dispatched_at": 0.0,
+        "active_tools": [],
+        "active_subagents": [],
+        "last_failed_activity": "",
+        "failure_count": 0,
+    }
+
+
+def saved_tool(item: Any) -> dict[str, Any]:
+    if isinstance(item, str):
+        return {"id": item, "activity": "tool"}
+    entry = {"id": item["id"], "activity": item["activity"]}
+    if item.get("anonymous_shell") is True:
+        entry["anonymous_shell"] = True
+    return entry
+
+
 def load_state(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
-        return {
-            "last_command": "",
-            "last_dispatched_command": "",
-            "last_dispatched_at": 0.0,
-            "active_tools": [],
-            "active_subagents": [],
-            "last_failed_activity": "",
-            "failure_count": 0,
-        }
+        return empty_state()
     if not isinstance(value, dict):
-        return {
-            "last_command": "",
-            "last_dispatched_command": "",
-            "last_dispatched_at": 0.0,
-            "active_tools": [],
-            "active_subagents": [],
-            "last_failed_activity": "",
-            "failure_count": 0,
-        }
+        return empty_state()
     active = value.get("active_tools")
     subagents = value.get("active_subagents")
     last_failed_activity = value.get("last_failed_activity", "")
     failure_count = value.get("failure_count", 0)
     last_dispatched_at = value.get("last_dispatched_at", 0.0)
     return {
-        "last_command": value.get("last_command", "")
-        if isinstance(value.get("last_command", ""), str)
-        else "",
         "last_dispatched_command": value.get("last_dispatched_command", "")
         if isinstance(value.get("last_dispatched_command", ""), str)
         else "",
@@ -191,18 +192,7 @@ def load_state(path: Path) -> dict[str, Any]:
         and last_dispatched_at >= 0
         else 0.0,
         "active_tools": [
-            {
-                "id": item,
-                "activity": "tool",
-                "anonymous_family": None,
-            }
-            if isinstance(item, str) else {
-                "id": item["id"],
-                "activity": item["activity"],
-                "anonymous_family": item.get("anonymous_family")
-                if isinstance(item.get("anonymous_family"), str)
-                else None,
-            }
+            saved_tool(item)
             for item in active
             if isinstance(item, str) or (
                 isinstance(item, dict) and isinstance(item.get("id"), str)
@@ -350,10 +340,12 @@ def completion_activity(event: dict[str, Any]) -> str | None:
     return classify_tool(dict(event, tool_input={}))
 
 
-def anonymous_tool_family(activity: str) -> str:
-    if activity in {"exec_command", "bash", "shell", "terminal", "write_stdin"}:
-        return "shell"
-    return activity
+def is_anonymous_shell(event: dict[str, Any]) -> bool:
+    name = event.get("tool_name", "")
+    if not isinstance(name, str):
+        return False
+    leaf = re.split(r"[./]", name.lower())[-1]
+    return leaf in {"exec_command", "bash", "shell", "terminal", "write_stdin"}
 
 
 def transition(event: dict[str, Any], state: dict[str, Any]) -> str | None:
@@ -385,22 +377,24 @@ def transition(event: dict[str, Any], state: dict[str, Any]) -> str | None:
             # Keep anonymous calls balanced too; do not discard known parallel ids.
             tool_id = "anonymous-" + str(time.monotonic_ns())
         if not any(item["id"] == tool_id for item in active):
-            family = anonymous_tool_family(activity) if anonymous else None
             duplicate = next(
                 (
                     item for item in active
-                    if family and item.get("anonymous_family") == family
+                    if anonymous and item["id"].startswith("anonymous-")
+                    and item["activity"] == activity
                 ),
                 None,
             )
             if duplicate:
                 duplicate["activity"] = activity
                 return "activity " + activity
-            active.append({
+            entry = {
                 "id": tool_id,
                 "activity": activity,
-                "anonymous_family": family,
-            })
+            }
+            if anonymous and is_anonymous_shell(event):
+                entry["anonymous_shell"] = True
+            active.append(entry)
         current = next(item for item in active if item["id"] == tool_id)
         retrying = last_failed_activity == activity
         return "activity retrying" if retrying else (
@@ -425,7 +419,7 @@ def transition(event: dict[str, Any], state: dict[str, Any]) -> str | None:
                 # Bare completion follows the newest nested action. Prefer a
                 # file operation over its enclosing Shell when both are live.
                 candidates.sort(key=lambda pair: (
-                    pair[1]["anonymous_family"] == "shell",
+                    pair[1].get("anonymous_shell", False),
                     -pair[0],
                 ))
             else:
@@ -451,8 +445,7 @@ def transition(event: dict[str, Any], state: dict[str, Any]) -> str | None:
                 candidates = (
                     [exact] if exact else [
                         pair for pair in candidates
-                        if anonymous_tool_family(pair[1]["activity"])
-                        == anonymous_tool_family(nested_activity)
+                        if pair[1]["activity"] == nested_activity
                     ]
                 )
             if candidates:
@@ -557,7 +550,6 @@ def handle(event: dict[str, Any], *, now: float | None = None) -> None:
                 or event.get("hook_event_name") == "PreToolUse"
             )
             first_dispatch = not dispatched
-            state["last_command"] = command
             if changed and (first_dispatch or immediate or mature):
                 state["last_dispatched_command"] = command
                 state["last_dispatched_at"] = timestamp

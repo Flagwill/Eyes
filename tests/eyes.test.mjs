@@ -220,7 +220,6 @@ test('resting main highlights never roam, rotate or morph, even during a long se
     for (const key of ['x', 'y', 'spread', 'height']) {
       assert.equal(light[key], baseline[key], `${emotion.id}: ${key} is held at rest`);
     }
-    assert.equal(light.angle, 0);
     const right = getLight(profile, t, 'r');
     assert.equal(light.x, right.x, 'both eyes share one attention target');
     assert.equal(light.y, right.y);
@@ -298,7 +297,6 @@ test('attention accents have one gentle onset and settle instead of looping', ()
   const pose = getPose('idle');
   const normal = getLight(pose, 0);
   const notice = getLight({ ...pose, attentionAccent: 1 }, 0);
-  assert.equal(notice.angle, normal.angle);
   assert.equal(notice.x, normal.x);
   assert.ok(notice.strength > normal.strength && notice.strength - normal.strength < 0.05);
   assert.ok(notice.spread < normal.spread * 1.04);
@@ -342,7 +340,6 @@ test('secondary reflections stay quiet, inside the eye, and fade through wraparo
       for (let i = 0; i < fragments.length; ++i) {
         const light = fragments[i];
         assert.ok(Object.values(light).every(Number.isFinite));
-        assert.equal(light.angle, 0, 'fragments must not spin inside the eye');
         assert.ok(light.strength >= 0 && light.strength < 0.03);
         assert.ok(light.spread * light.height <= 0.031);
         assert.ok(Math.abs(light.x) + light.spread < 0.94);

@@ -15,12 +15,7 @@ await mkdir(output, {recursive: true});
 let nextId = 10;
 const id = () => `0:${nextId++}`;
 const n = (v) => Number(v.toFixed(7));
-const objects = [];
-const record = (type, attrs, values) => {
-  const key = id();
-  objects.push({id: key, type, attrs, values});
-  return key;
-};
+const record = () => id();
 const properties = {x:13, y:14, rotation:15, scaleX:16, scaleY:17, opacity:18,
   inRotation:84, inDistance:85, outRotation:86, outDistance:87};
 
@@ -67,13 +62,13 @@ let scene='';
 for (const side of sides) {
   const pose=core.getPose('idle');
   const eye=core.getEyeGeometry(pose,side,0,0);
-  const container=record('Node',{}, {x:280+pose[side+'x'],y:170+pose[side+'y'],scaleX:eye.width,scaleY:eye.height});
+  const container=record();
   const attention=id(), vertical=id(), lid=id(), shape=id(), lightLook=id();
-  const reflectionSurface=record('Node',{}, {y:0,opacity:0});
+  const reflectionSurface=record();
   const points=vertices(eye);
-  const vertexIds=points.map(v=>record('CubicDetachedVertex',{},v));
-  const main=record('Shape',{}, {x:-.04,y:-.12});
-  const bars=[record('Shape',{}, {x:-.1,y:.18,opacity:0}),record('Shape',{}, {x:.1,y:-.18,opacity:0})];
+  const vertexIds=points.map(()=>record());
+  const main=record();
+  const bars=[record(),record()];
   geometryIds[side]={container,attention,vertical,lid,shape,lightLook,vertexIds,main,bars,reflectionSurface};
   const v=vertexIds.map((key,i)=>`<CubicDetachedVertex id="${key}" ${Object.entries(points[i]).map(([k,v])=>`${k}="${v}"`).join(' ')}/>`).join('\n');
   scene+=`<Node id="${container}" name="${side}-eye" x="${280+pose[side+'x']}" y="${170+pose[side+'y']}" scaleX="${eye.width}" scaleY="${eye.height}">
@@ -143,7 +138,7 @@ for(const design of orderedDesigns) {
     scene+=`<Node id="${propPitch}" name="prop-pitch"><Node id="${propYaw}" name="prop-yaw">`;
     inProps=true;
   }
-  const key=record('Node',{},heldAccents[design.id]);
+  const key=record();
   accentIds[design.id]=key;
   const front=design.prop ? `<LinearGradient startX="0" startY="-22" endX="0" endY="22"><GradientStop position="0" colorValue="FFDFC8F1"/><GradientStop position="1" colorValue="FFCFB5E8"/></LinearGradient>`
     : `<SolidColor colorValue="FF${(design.color || '#b08add').slice(1).toUpperCase()}"/>`;
@@ -156,7 +151,7 @@ if(inProps)scene+='</Node></Node>';
 scene+='</Node>';
 scene+=eyeScene;
 
-function snapshot(emotion,time,moving) {
+function snapshot(emotion,moving) {
   const pose=moving===2 ? core.getEntryPose(emotion) : moving===0 ? core.getPose(emotion)
     : core.getGesturePose(emotion, moving===1 ? 0 : moving-2);
   const values={};
@@ -187,7 +182,7 @@ function timeline(name,animationId,values) {
 let timelines='';
 core.EXPRESSIONS.forEach((emotion,e)=>{
   for(let variant=0;variant<5;variant++)
-    timelines+=timeline(weights[e*5+variant],animationIds[e*5+variant],snapshot(emotion.id,0,variant));
+    timelines+=timeline(weights[e*5+variant],animationIds[e*5+variant],snapshot(emotion.id,variant));
 });
 let layers=`<StateMachineLayer name="Expression"><AnyState x="200" y="-120"/><ExitState x="400" y="-120"/><EntryState><StateTransition stateToId="${blendId}"/></EntryState><BlendStateDirect id="${blendId}" x="200" y="0">${weights.map((w,i)=>`<BlendAnimationDirect inputId="${inputIds[w]}" animationId="${animationIds[i]}"/>`).join('')}</BlendStateDirect></StateMachineLayer>`;
 function control(name, poses) {

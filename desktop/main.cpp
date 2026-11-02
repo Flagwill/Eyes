@@ -42,12 +42,28 @@ namespace {
 constexpr auto kSocketName = "eyes.sock";
 constexpr quint16 kBridgePort = 38271;
 
+const QJsonObject &eyesManifest()
+{
+    static const QJsonObject manifest = [] {
+        QFile file(QStringLiteral(":/assets/eyes/manifest.json"));
+        if (!file.open(QIODevice::ReadOnly)) {
+            qWarning() << "Eyes: unable to read the embedded activity manifest";
+            return QJsonObject{};
+        }
+        return QJsonDocument::fromJson(file.readAll()).object();
+    }();
+    return manifest;
+}
+
 QString runtimeSocketPath()
 {
     QString directory = QStandardPaths::writableLocation(
         QStandardPaths::RuntimeLocation);
-    if (directory.isEmpty())
-        directory = QDir::tempPath();
+    if (directory.isEmpty()) {
+        return QDir(QDir::tempPath()).filePath(
+            QStringLiteral("eyes-%1.sock").arg(
+                static_cast<qulonglong>(getuid())));
+    }
     return QDir(directory).filePath(QString::fromLatin1(kSocketName));
 }
 
@@ -97,17 +113,13 @@ void removeUserSuppression()
 
 struct AgentState {
     QString motion = QStringLiteral("idle");
-    QString eyebrow = QStringLiteral("Eyes 在线");
     QString title = QStringLiteral("随时准备出发");
-    QString detail = QStringLiteral("收到任务后，我会在这里工作");
 
     QVariantMap toMap() const
     {
         return {
             {QStringLiteral("motion"), motion},
-            {QStringLiteral("eyebrow"), eyebrow},
             {QStringLiteral("title"), title},
-            {QStringLiteral("detail"), detail},
         };
     }
 };
@@ -124,7 +136,6 @@ public:
         , m_pendingPointerPosition(m_attentionPosition)
     {
         m_suppressionReason = userSuppressionReason();
-        m_state.eyebrow = QStringLiteral("Eyes 桌面上线");
         m_completionTimer.setSingleShot(true);
         m_completionTimer.setInterval(4500);
         connect(&m_completionTimer, &QTimer::timeout, this,
@@ -154,7 +165,6 @@ public:
         });
     }
 
-    AgentState state() const { return m_state; }
     QVariantMap stateMap() const { return m_state.toMap(); }
     bool shown() const { return m_shown; }
     bool suppressed() const { return !m_suppressionReason.isEmpty(); }
@@ -208,11 +218,10 @@ signals:
     void demoRequested();
 
 private:
-    void setState(const QString &motion, const QString &eyebrow,
-                  const QString &title, const QString &detail, bool show)
+    void setState(const QString &motion, const QString &title, bool show)
     {
         m_completionTimer.stop();
-        m_state = {motion, eyebrow, title, detail};
+        m_state = {motion, title};
         Q_EMIT stateChanged();
         if (show && !suppressed())
             setShown(true);
@@ -295,37 +304,22 @@ QJsonObject EyesService::applyCommand(const QString &line)
 
     if (command == QLatin1String("start")
         || command == QLatin1String("curious")) {
-        setState(QStringLiteral("curious"), QStringLiteral("收到任务"),
-                 QStringLiteral("正在理解任务"),
-                 QStringLiteral("先把问题和线索看清楚"), true);
+        setState(QStringLiteral("curious"), QStringLiteral("正在理解任务"), true);
     } else if (command == QLatin1String("thinking")) {
-        setState(QStringLiteral("thinking"), QStringLiteral("思考中"),
-                 QStringLiteral("正在梳理思路"),
-                 QStringLiteral("找到一条清晰的推进路径"), true);
+        setState(QStringLiteral("thinking"), QStringLiteral("正在梳理思路"), true);
     } else if (command == QLatin1String("working")) {
-        setState(QStringLiteral("focused"), QStringLiteral("正在工作"),
-                 QStringLiteral("专注执行中"),
-                 QStringLiteral("一步一步把事情做好"), true);
+        setState(QStringLiteral("focused"), QStringLiteral("专注执行中"), true);
     } else if (command == QLatin1String("waiting")) {
-        setState(QStringLiteral("waiting"), QStringLiteral("等待你的回应"),
-                 QStringLiteral("需要一点确认"),
-                 QStringLiteral("我在听，请告诉我下一步"), true);
+        setState(QStringLiteral("waiting"), QStringLiteral("需要一点确认"), true);
     } else if (command == QLatin1String("complete")
                || (command == QLatin1String("activity")
                    && parts.size() == 2 && parts.value(1) == QLatin1String("complete"))) {
-        setState(QStringLiteral("happy"), QStringLiteral("工作完成"),
-                 QStringLiteral("已经完成了"),
-                 QStringLiteral("这一步做得很好，准备继续下一件"), true);
+        setState(QStringLiteral("happy"), QStringLiteral("已经完成了"), true);
         if (!suppressed())
             m_completionTimer.start();
     } else if (command == QLatin1String("activity")) {
-        static const QJsonArray activities = [] {
-            QFile file(QStringLiteral(":/assets/eyes/manifest.json"));
-            if (!file.open(QIODevice::ReadOnly))
-                return QJsonArray{};
-            return QJsonDocument::fromJson(file.readAll()).object()
-                .value(QStringLiteral("activities")).toArray();
-        }();
+        const QJsonArray activities =
+            eyesManifest().value(QStringLiteral("activities")).toArray();
         QJsonObject activity;
         if (parts.size() == 2) {
             for (const QJsonValue &value : activities) {
@@ -339,13 +333,10 @@ QJsonObject EyesService::applyCommand(const QString &line)
             return {{QStringLiteral("ok"), false},
                     {QStringLiteral("error"), QStringLiteral("usage: activity <known-id>")}};
         }
-        setState(parts[1], QStringLiteral("Eyes 工作状态"),
-                 activity.value(QStringLiteral("name")).toString(),
-                 activity.value(QStringLiteral("description")).toString(), true);
+        setState(parts[1],
+                 activity.value(QStringLiteral("name")).toString(), true);
     } else if (command == QLatin1String("idle")) {
-        setState(QStringLiteral("idle"), QStringLiteral("Eyes 在线"),
-                 QStringLiteral("自在待命"),
-                 QStringLiteral("收到任务后，我会重新出现"), false);
+        setState(QStringLiteral("idle"), QStringLiteral("自在待命"), false);
         setShown(false);
     } else if (command == QLatin1String("show")) {
         showForUser();
@@ -401,9 +392,7 @@ QJsonObject EyesService::applyCommand(const QString &line)
                 {QStringLiteral("error"), QStringLiteral("unknown emotion")},
             };
         }
-        setState(emotion, QStringLiteral("Eyes 神态"),
-                 QStringLiteral("正在表达"),
-                 QStringLiteral("当前神态：%1").arg(emotion), true);
+        setState(emotion, QStringLiteral("正在表达"), true);
     } else if (command == QLatin1String("status")) {
         // Status is intentionally read-only.
     } else if (command == QLatin1String("demo")) {
@@ -856,10 +845,8 @@ public:
         m_socketPath = runtimeSocketPath();
         m_lockFile =
             std::make_unique<QLockFile>(m_socketPath + QStringLiteral(".lock"));
-        if (!tryBecomePrimary()) {
-            QTimer::singleShot(0, m_application, &QCoreApplication::quit);
+        if (!tryBecomePrimary())
             return;
-        }
 
         m_wallpaperBridge = new WallpaperBridge(&m_service, this);
         if (!m_wallpaperBridge->start()) {
@@ -904,10 +891,7 @@ public:
                 this, &DesktopApplication::playDemo);
         m_demoTimer.setInterval(3400);
         connect(&m_demoTimer, &QTimer::timeout, this, [this] {
-            if (++m_demoIndex >= m_demoCommands.size()) {
-                m_demoTimer.stop();
-                return;
-            }
+            ++m_demoIndex;
             m_service.applyCommand(m_demoCommands[m_demoIndex]);
             if (m_demoIndex == m_demoCommands.size() - 1)
                 m_demoTimer.stop();
@@ -1023,10 +1007,10 @@ private:
         m_tray->setContextMenu(menu);
         connect(m_tray, &QSystemTrayIcon::activated, this,
                 [this](QSystemTrayIcon::ActivationReason reason) {
-                    if (reason == QSystemTrayIcon::Trigger)
+                    if (reason == QSystemTrayIcon::Trigger) {
                         m_demoTimer.stop();
-                    if (reason == QSystemTrayIcon::Trigger)
                         m_service.applyCommand(QStringLiteral("toggle"));
+                    }
                 });
         m_tray->show();
     }
@@ -1051,18 +1035,22 @@ void DesktopApplication::playDemo()
 {
     m_demoTimer.stop();
     m_demoCommands.clear();
-    const QStringList order = {QStringLiteral("listening"), QStringLiteral("planning"),
-        QStringLiteral("reading"), QStringLiteral("searching"), QStringLiteral("skill"),
-        QStringLiteral("creating"), QStringLiteral("editing"), QStringLiteral("running"),
-        QStringLiteral("mcp"), QStringLiteral("tool"), QStringLiteral("delegating"),
-        QStringLiteral("testing"), QStringLiteral("blocked"), QStringLiteral("debugging"),
-        QStringLiteral("waiting"), QStringLiteral("retrying"), QStringLiteral("reviewing"),
-        QStringLiteral("saving"), QStringLiteral("summarizing"), QStringLiteral("complete")};
-    for (const QString &activity : order)
-        m_demoCommands.append(QStringLiteral("activity ") + activity);
+    const QJsonArray activities =
+        eyesManifest().value(QStringLiteral("activities")).toArray();
+    for (const QJsonValue &value : activities) {
+        const QString activity =
+            value.toObject().value(QStringLiteral("id")).toString();
+        if (!activity.isEmpty())
+            m_demoCommands.append(QStringLiteral("activity ") + activity);
+    }
+    if (m_demoCommands.isEmpty()) {
+        qWarning() << "Eyes: activity demo sequence is unavailable";
+        return;
+    }
     m_demoIndex = 0;
     m_service.applyCommand(m_demoCommands.front());
-    m_demoTimer.start();
+    if (m_demoCommands.size() > 1)
+        m_demoTimer.start();
 }
 
 } // namespace
@@ -1083,20 +1071,14 @@ int main(int argc, char *argv[])
     const QCommandLineOption hiddenOption(
         QStringLiteral("hidden"),
         QStringLiteral("Start without showing the material."));
-    const QCommandLineOption previewOption(
-        QStringLiteral("preview"),
-        QStringLiteral("Show the material immediately."));
     parser.addOption(hiddenOption);
-    parser.addOption(previewOption);
     parser.process(application);
 
     DesktopApplication desktop(&application);
     if (!desktop.isPrimary())
         return 0;
 
-    if (parser.isSet(previewOption))
-        desktop.showOverlay();
-    else if (!parser.isSet(hiddenOption))
+    if (!parser.isSet(hiddenOption))
         desktop.showOverlay();
 
     return application.exec();

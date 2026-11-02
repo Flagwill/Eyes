@@ -99,7 +99,7 @@ manifest together with shared source changes; `npm test` detects stale assets.
 ## Expression accessories
 
 The shared asset also contains the font-free vector paths from
-`EyesCore.accentDesigns`: brows, question mark, stars, hollow glasses, alert
+`EyesCore.accentDesigns`: brows, question mark, stars, alert
 marks and small Z shapes. `getAccentStates` anchors them to each authored pose.
 All five bases key every accessory transform and opacity so interrupted
 expression changes fade cleanly. A separate `accents` input controls the whole

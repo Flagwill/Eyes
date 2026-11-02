@@ -96,6 +96,8 @@ test('props take part in the eye performance instead of remaining fixed state ba
 test('the native catalog and QML bindings match the authored shared expressions', () => {
   const manifest=JSON.parse(readFileSync('assets/eyes/manifest.json','utf8'));
   assert.deepEqual(manifest.activities,ACTIVITIES);
+  assert.equal(new Set(ACTIVITIES.map(item=>item.id)).size,ACTIVITIES.length,
+    'the activity catalog must not contain duplicate ids');
   const qml=readFileSync('packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui/RiveEyeScene.qml','utf8');
   for(const {id}of EXPRESSIONS)for(const variant of ['still','entry','act','follow','resolve']) {
     assert.ok(manifest.inputs.includes(id+variant));

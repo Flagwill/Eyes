@@ -121,10 +121,6 @@ export class Eyes {
     this.frameId = requestAnimationFrame((time) => this.frame(time));
   }
 
-  drawLight(ctx, pose, geometry, side, time, blink) {
-    core.drawLight(ctx, this.engine, pose, geometry, side, time, blink);
-  }
-
   destroy() {
     this.destroyed = true;
     this.rive?.destroy();

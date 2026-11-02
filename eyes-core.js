@@ -362,8 +362,6 @@ var EyesCore = (function () {
       spread: spread,
       height: height,
       strength: clamp(pose.lightStrength * (1 + asymmetry) * breath + cue * 0.008, 0, 0.24),
-      angle: 0,
-      roundness: 0.2,
       kind: 0,
     };
   }
@@ -395,8 +393,6 @@ var EyesCore = (function () {
         spread: i === 0 ? 0.20 : 0.14,
         height: i === 0 ? 0.15 : 0.11,
         strength: strength * envelope * (i === 0 ? 1 : 0.72),
-        angle: 0,
-        roundness: 0,
         kind: 1,
       });
     }
@@ -605,8 +601,9 @@ var EyesCore = (function () {
       beat(t,7,.5,.7,1.4)];
   }
 
-  function getRestingMotion(emotion, time) {
-    var cues = getActingCues(emotion, time), result = motionPose();
+  function getRestingMotion(emotion, time, cues) {
+    cues = cues || getActingCues(emotion, time);
+    var result = motionPose();
     for (var i=0; i<3; i++) for (var key in GESTURES[emotion][i])
       result[key] += GESTURES[emotion][i][key] * cues[i];
     return result;
@@ -666,8 +663,9 @@ var EyesCore = (function () {
 
   // A glance has a held target and a reason to return. Pointer attention still
   // takes priority, so these phrases never fight a real user's cursor.
-  function getAmbientGaze(emotion, time) {
-    var cues = getActingCues(emotion,time), a=cues[0], b=cues[1], c=cues[2];
+  function getAmbientGaze(emotion, time, cues) {
+    cues = cues || getActingCues(emotion, time);
+    var a=cues[0], b=cues[1], c=cues[2];
     if (ACTIVITY_SCORES[emotion]) {
       var targets=ACTIVITY_SCORES[emotion].gaze, gaze={x:0,y:0};
       for (var i=0;i<3;i++) { gaze.x+=targets[i][0]*cues[i]; gaze.y+=targets[i][1]*cues[i]; }
@@ -848,8 +846,11 @@ var EyesCore = (function () {
     var energy = reduce ? 0 : this.energy;
     if (alive) this.flowTime += dt;
     var naturalTime = this.flowTime;
+    var currentCues = alive
+      ? getActingCues(this.emotion, naturalTime - this.emotionNaturalAt)
+      : null;
     var ambient = alive
-      ? getAmbientGaze(this.emotion, naturalTime - this.emotionNaturalAt)
+      ? getAmbientGaze(this.emotion, naturalTime - this.emotionNaturalAt, currentCues)
       : { x: 0, y: 0 };
 
     if (alive && naturalTime > this.nextBlink &&
@@ -887,7 +888,8 @@ var EyesCore = (function () {
       target.gazeX += fixation.x * energy;
       target.gazeY += fixation.y * energy;
       var accent = getExpressionAccent(this.emotion, t - this.emotionAt);
-      var rest = getRestingMotion(this.emotion, naturalTime - this.emotionNaturalAt);
+      var rest = getRestingMotion(
+        this.emotion, naturalTime - this.emotionNaturalAt, currentCues);
       var motion = motionPose();
       for (var channel in motion) motion[channel] = accent[channel] + rest[channel];
       motion.open -= fixation.lid;
@@ -952,11 +954,10 @@ var EyesCore = (function () {
       var entering = Math.max(0, Math.min(1, this.entryWeights[emotionId].step(
         alive && emotionId === this.emotion ? entryEnvelope(emotionId, t - this.emotionAt) * energy : 0, dt)));
       if (entering < 0.0000001) entering = 0;
-      var cues = getActingCues(emotionId, naturalTime-this.performanceStarts[emotionId]);
       var gestures=[], gestureSum=0;
       for (var gesture=0; gesture<3; gesture++) {
         var amount=Math.max(0,Math.min(1,this.actionWeights[emotionId][gesture].step(
-          alive && emotionId===this.emotion ? cues[gesture] : 0,dt))) * motionWeight / 2;
+          alive && emotionId===this.emotion ? currentCues[gesture] : 0,dt))) * motionWeight / 2;
         if (amount < 0.0000001) amount = 0;
         gestures.push(amount); gestureSum+=amount;
       }
@@ -997,7 +998,6 @@ var EyesCore = (function () {
       breathe: alive ? (Math.sin(naturalTime * 1.15) * 0.0035 +
         Math.sin(naturalTime * 1.93) * 0.0008) * energy : 0,
       bounce: bounce,
-      alive: alive,
     };
     return this.lastFrame;
   };
@@ -1294,7 +1294,6 @@ var EyesCore = (function () {
     applyFaceProjection(ctx.canvas, this);
     var pose = frame.pose;
     var blink = frame.blink;
-    var alive = frame.alive;
     var t = this.elapsed;
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);

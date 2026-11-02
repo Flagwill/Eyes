@@ -175,7 +175,7 @@ print(json.dumps({'commands':commands, 'state':json.loads(files[0].read_text())}
     'activity reading','activity editing','activity reading',
     'activity debugging','activity retrying']);
   assert.deepEqual(value.state.active_tools,[{
-    id:'last',activity:'reading',anonymous_family:null,
+    id:'last',activity:'reading',
   }]);
   assert.doesNotMatch(JSON.stringify(value.state), /private|never-persist/);
   for (const file of readdirSync(root)) assert.equal(statSync(join(root,file)).mode & 0o777,0o600);
@@ -287,10 +287,9 @@ test('legacy hook state migrates to typed tool activity', async t => {
   const result = await pythonHook('print(json.dumps(hook.load_state(pathlib.Path(data))))',path);
   assert.equal(result.code,0,result.stderr);
   assert.deepEqual(JSON.parse(result.stdout),{
-    last_command:'working',
     last_dispatched_command:'',
     last_dispatched_at:0,
-    active_tools:[{id:'old',activity:'tool',anonymous_family:null}],
+    active_tools:[{id:'old',activity:'tool'}],
     active_subagents:[],
     last_failed_activity:'',
     failure_count:0,
@@ -325,8 +324,33 @@ print(json.dumps({'commands':commands,'state':json.loads(files[0].read_text())})
     'activity reading',
   ]);
   assert.deepEqual(value.state.active_tools,[{
-    id:'table',activity:'reading',anonymous_family:null,
+    id:'table',activity:'reading',
   }]);
+});
+
+test('bare anonymous completion prefers a file action over its enclosing shell', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-hook-anonymous-order-'));
+  t.after(() => rmSync(root,{recursive:true,force:true}));
+  const result = await pythonHook(`
+hook.state_directory = lambda: pathlib.Path(data['root'])
+hook.dispatch = lambda command: None
+events = [
+    {'hook_event_name':'PreToolUse','tool_name':'functions.apply_patch',
+     'tool_input':{'patch':'*** Add File: a'}},
+    {'hook_event_name':'PreToolUse','tool_name':'functions.exec_command',
+     'tool_input':{'cmd':'sleep 1'}},
+    {'hook_event_name':'PostToolUse'},
+]
+for i, event in enumerate(events):
+    hook.handle(dict(event, session_id='anonymous-order'), now=i * 0.5)
+files = list(pathlib.Path(data['root']).glob('*.json'))
+print(json.dumps({'state':json.loads(files[0].read_text())}))
+`, {root});
+  assert.equal(result.code,0,result.stderr);
+  const active=JSON.parse(result.stdout).state.active_tools;
+  assert.equal(active.length,1,'the completed file action must be removed');
+  assert.equal(active[0].activity,'running');
+  assert.equal(active[0].anonymous_shell,true);
 });
 
 test('rapid work-state changes are coalesced while urgent states remain immediate', async t => {
@@ -362,7 +386,7 @@ print(json.dumps({'commands':commands, 'state':json.loads(files[0].read_text())}
     'activity reading','activity editing','waiting','activity reading',
     'activity debugging','activity retrying','thinking',
   ]);
-  assert.equal(value.state.last_command,'thinking');
+  assert.equal(Object.hasOwn(value.state,'last_command'),false);
   assert.equal(value.state.last_dispatched_command,'thinking');
 });
 

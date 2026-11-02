@@ -13,7 +13,6 @@ Item {
     readonly property real renderPixelRatio: Math.max(1, Screen.devicePixelRatio)
     readonly property var faceMatrix: EyeCore.EyesCore.getFaceScreenMatrix(
         frame && frame.face ? frame.face : ({matrix: EyeCore.EyesCore.getFaceMatrix(0, 0, 0)}), layout)
-    readonly property var inputs: frame ? frame.riveInputs : ({idlestill: 100})
     readonly property alias renderer: riveItem
     readonly property bool loaded: riveItem.loadingStatus === Rive.RiveQtQuickItem.Loaded
 

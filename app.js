@@ -140,9 +140,7 @@ function immersive(value) {
 $('#immersive').addEventListener('click', () => immersive(true));
 $('#exit-immersive').addEventListener('click', () => immersive(false));
 
-const CYCLE = ['listening','planning','reading','searching','skill','creating','editing',
-  'running','mcp','tool','delegating','testing','blocked','debugging','waiting','retrying',
-  'reviewing','saving','summarizing','complete'].map(id => {
+const CYCLE = ACTIVITIES.map(({id}) => {
   const activity = ACTIVITIES.find(item => item.id === id);
   return {emotion:id,duration:id === 'complete' ? 5100 : 3400,
     label:activity.name,description:activity.description};
