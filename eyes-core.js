@@ -431,15 +431,18 @@ var EyesCore = (function () {
     var c = beat(t, 14.6, 0.10, 0.65, 0.26);
     var d = beat(t, 22.8, 0.14, 0.42, 0.3);
     var restraint = emotion === 'focused' ? 0.28 : emotion === 'sleepy' ? 0.45 : 1;
+    var idleGain = emotion === 'idle' ? 1.65 : 1;
     return {
-      x: (a * 0.85 - b * 0.7 + c * 0.55 - d * 0.8) * restraint,
-      y: (-a * 0.32 + b * 0.24 + c * 0.3 - d * 0.2) * restraint,
-      lid: beat(t, 18.2, 0.28, 0.18, 0.65) * 0.025 * restraint,
+      x: (a * 0.85 - b * 0.7 + c * 0.55 - d * 0.8) * restraint * idleGain,
+      y: (-a * 0.32 + b * 0.24 + c * 0.3 - d * 0.2) * restraint * idleGain,
+      lid: beat(t, 18.2, 0.28, 0.18, 0.65) * 0.025 * restraint *
+        (emotion === 'idle' ? 1.55 : 1),
     };
   }
 
   function motionPose() {
     return {lift: 0, open: 0, asymmetry: 0, tilt: 0, bend: 0,
+      width: 0,
       upperBend: 0, lowerBend: 0, leftTension: 0, rightTension: 0,
       leftLift: 0, rightLift: 0, leftSlope: 0, rightSlope: 0, spacing: 0,
       propA: 0, propB: 0, propC: 0};
@@ -489,9 +492,15 @@ var EyesCore = (function () {
   // an unrelated Rive timeline. Values are deltas from the held expression.
   var GESTURES = {
     idle: [
-      {open:.065, upperBend:1.3, lowerBend:-.35},
-      {open:-.065, upperBend:-.6, lowerBend:.2, leftSlope:.4, rightSlope:-.4},
-      {rightLift:-1.2, asymmetry:.012}],
+      // The three idle poses are mixed as one slow, continuous breath rather
+      // than three isolated beats. The widened inhale is answered by a softer,
+      // slightly lower exhale; the last pose adds a small organic weight shift.
+      {open:.13, width:.014, lift:-1.35, upperBend:2.1, lowerBend:-.55,
+        spacing:.55, leftTension:.25, rightTension:-.15},
+      {open:-.085, width:-.007, lift:.72, upperBend:-1.05, lowerBend:.38,
+        spacing:-.3},
+      {leftLift:.55, rightLift:-.72, leftTension:.7, rightTension:-.55,
+        asymmetry:.006, tilt:-.0022}],
     happy: [
       {bend:6.5, lift:-3.5, spacing:-1.3},
       {bend:3.5, leftLift:-1.8},
@@ -590,8 +599,17 @@ var EyesCore = (function () {
     var score = ACTIVITY_SCORES[emotion];
     if (score) return (score.timing || [[1.1,.4,.65,.95],[3.4,.45,.6,1.1],[6.6,.5,.55,1.2]])
       .map(function(cue) { return beat(t,cue[0],cue[1],cue[2],cue[3]); });
-    if (emotion === 'idle') return [beat(t,2.8,.6,.8,1.4),
-      beat(t,8.2,1.1,.6,1.7),beat(t,13.8,.47,.4,.9)];
+    if (emotion === 'idle') {
+      // Three calm breaths per idle cycle (about 5.8 seconds each). A tiny
+      // phase bend makes the inhale a little quicker than the release, while
+      // the complementary weights keep the two lid poses within one blend.
+      var duration = getPerformanceDuration('idle');
+      var phase = (t % (duration / 3)) / (duration / 3);
+      var warped = phase + .045 * Math.sin(phase * Math.PI * 2);
+      var breath = .5 - .5 * Math.cos(warped * Math.PI * 2);
+      var transition = 4 * breath * (1 - breath);
+      return [breath * .86, (1 - breath) * .86, transition * .14];
+    }
     if (emotion === 'happy') return [beat(t,.9,.38,.65,1.2),
       beat(t,6.2,.45,.35,1.25),beat(t,6.35,.45,.35,1.25)];
     if (emotion === 'curious') return [beat(t,1.1,.32,.75,1.35),
@@ -628,6 +646,7 @@ var EyesCore = (function () {
     for (var side of ['l', 'r']) {
       var left = side === 'l', tension = motion[left ? 'leftTension' : 'rightTension'];
       var oldHeight = pose[side + 'h'];
+      pose[side + 'w'] *= 1 + motion.width * weight;
       pose[side + 'h'] *= 1 + (motion.open + (left ? -1 : 1) * motion.asymmetry +
         tension * 0.009) * weight;
       // Upper lids travel farther than lower lids during a thought or a droop.
@@ -681,8 +700,12 @@ var EyesCore = (function () {
       return gaze;
     }
     if (emotion === 'idle') {
-      var check=beat(time%16,6,.28,1.07,.36);
-      return check ? {x:check*3.5,y:-check} : {x:0,y:0};
+      var t=time%getPerformanceDuration('idle');
+      var right=beat(t,3.8,.32,1.65,.95);
+      var left=beat(t,10.9,.38,1.1,1);
+      var settle=beat(t,14.7,.6,.6,.9);
+      return {x:right*6.2-left*4.4+settle*1.4,
+        y:-right*1.4+left*1.1-settle*.7};
     }
     if (!a && !b && !c) return {x:0,y:0};
     if (emotion === 'happy') return {x:b*1.8,y:-a*1.2};
@@ -756,7 +779,9 @@ var EyesCore = (function () {
     for (var emotion of EXPRESSIONS) {
       this.expressionWeights[emotion.id] = new Spring(emotion.id === 'idle' ? 1 : 0, 150, 25);
       this.entryWeights[emotion.id] = new Spring(0, 220, 29);
-      this.actionWeights[emotion.id] = [new Spring(0,150,25),new Spring(0,150,25),new Spring(0,150,25)];
+      this.actionWeights[emotion.id] = emotion.id === 'idle'
+        ? [new Spring(0,74,21),new Spring(0,74,21),new Spring(0,74,21)]
+        : [new Spring(0,150,25),new Spring(0,150,25),new Spring(0,150,25)];
       this.performanceStarts[emotion.id] = 0;
     }
     this.performanceMotion = new Spring(0, 100, 22);

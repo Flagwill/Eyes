@@ -171,16 +171,47 @@ test('entry acting eases out, survives interruption and does not replay on repea
   }finally{current.destroy();}
 });
 
-test('authored motion returns to a resting pose with zero velocity at each loop boundary',()=>{
+test('authored motion is seam-continuous and non-idle poses pause at the loop boundary',()=>{
   for(const {id} of EMOTIONS) {
     const duration=core.getPerformanceDuration(id), epsilon=.001;
     const first=core.getPerformancePose(id,0), before=core.getPerformancePose(id,duration-epsilon);
     const after=core.getPerformancePose(id,epsilon);
     for(const key of Object.keys(first)) {
-      assert.ok(Math.abs(first[key]-before[key])<1e-6,id+' loop '+key);
-      assert.ok(Math.abs(first[key]-after[key])<1e-6,id+' starts in a hold '+key);
+      // Idle breathing is deliberately continuous at the seam. Other
+      // expressions keep a quiet hold before their next acting beat.
+      const tolerance=id==='idle'?2e-5:1e-6;
+      assert.ok(Math.abs(first[key]-before[key])<tolerance,id+' loop '+key);
+      assert.ok(Math.abs(first[key]-after[key])<tolerance,id+' seam '+key);
     }
   }
+});
+
+test('idle breathing reaches the Rive output continuously across three cycles',()=>{
+  const current=scene(),sim=new EyeSimulation({random:()=>.5});
+  sim.follow=false;
+  try {
+    const heights=[],widths=[];
+    let previous,maxStep=0;
+    for(let i=0;i<Math.ceil((core.getPerformanceDuration('idle')+1)*60);i++) {
+      current.advance(sim,1/60);
+      if(i<120)continue;
+      const eye=current.art.node('r-eye');
+      heights.push(eye.scaleY);widths.push(eye.scaleX);
+      if(previous!==undefined)maxStep=Math.max(maxStep,Math.abs(eye.scaleY-previous));
+      previous=eye.scaleY;
+    }
+    assert.ok(Math.max(...heights)-Math.min(...heights)>14,
+      'the rendered breath is visibly wider than the previous isolated idle beats');
+    assert.ok(Math.max(...widths)-Math.min(...widths)>1.4,
+      'the rendered eye body participates in the breath');
+    assert.ok(maxStep<.3,'the Rive blend never steps the eyelid between frames');
+    sim.reducedMotion=true;
+    for(let i=0;i<300;i++)current.advance(sim,1/60);
+    const held={y:current.art.node('r-eye').scaleY,x:current.art.node('r-eye').scaleX};
+    for(let i=0;i<240;i++)current.advance(sim,1/60);
+    assert.ok(Math.abs(current.art.node('r-eye').scaleY-held.y)<.001);
+    assert.ok(Math.abs(current.art.node('r-eye').scaleX-held.x)<.001);
+  }finally{current.destroy();}
 });
 
 test('rendered eyelid acting follows the shared clock regardless of Rive playback phase',()=>{

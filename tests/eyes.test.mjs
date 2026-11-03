@@ -336,8 +336,11 @@ test('attention accents have one gentle onset and settle instead of looping', ()
 
 test('ambient acting contains long holds and purposeful glances', () => {
   assert.deepEqual(getAmbientGaze('idle', 3), { x: 0, y: 0 });
-  assert.ok(getAmbientGaze('idle', 6.8).x > 0);
+  const right = getAmbientGaze('idle', 4.6);
+  assert.deepEqual(getAmbientGaze('idle', 5.4), right);
+  assert.ok(right.x > 6 && right.y < -1, 'idle holds a small right-up glance');
   assert.equal(getAmbientGaze('idle', 8).x, 0);
+  assert.ok(getAmbientGaze('idle', 11.6).x < -4, 'a second glance answers to the left');
   assert.equal(getAmbientGaze('thinking', 1).x, 0);
   assert.ok(getAmbientGaze('thinking', 3.1).x < -4);
   assert.equal(getAmbientGaze('thinking', 6).x, 0);
@@ -452,9 +455,9 @@ test('fixation corrections have quiet holds, bounded amplitude and no visible lo
   for (let i = 0; i < 2970; i++) {
     const motion = getFixationMotion('idle', i / 100);
     if (motion.x === 0 && motion.y === 0 && motion.lid === 0) still++;
-    assert.ok(Math.abs(motion.x) < 0.9 && Math.abs(motion.y) < 0.4);
-    assert.ok(motion.lid >= 0 && motion.lid <= 0.025);
-    assert.ok(Math.abs(motion.x - previous.x) < 0.17);
+    assert.ok(Math.abs(motion.x) < 1.45 && Math.abs(motion.y) < 0.56);
+    assert.ok(motion.lid >= 0 && motion.lid <= 0.04);
+    assert.ok(Math.abs(motion.x - previous.x) < 0.28);
     previous = motion;
   }
   assert.ok(still > 2400, 'most of the time is spent holding a fixation');
@@ -473,15 +476,15 @@ test('a still cursor retains its target and anchored main reflection through nat
       if (i < fps * 2) continue;
       min = Math.min(min, frame.pose.gazeX);
       max = Math.max(max, frame.pose.gazeX);
-      assert.ok(Math.abs(frame.pose.gazeX - 23) < 0.6);
-      assert.ok(Math.abs(frame.pose.gazeY + 12) < 0.25);
+      assert.ok(Math.abs(frame.pose.gazeX - 23) < 1);
+      assert.ok(Math.abs(frame.pose.gazeY + 12) < 0.6);
       const light = getLight(frame.pose, simulation.lightTime);
       reference ||= light;
       for (const key of ['x', 'y', 'spread', 'height']) {
         assert.ok(Math.abs(light[key] - reference[key]) < 0.0001, `${key}: the main patch must stay anchored`);
       }
     }
-    assert.ok(max - min > 0.65, 'the gaze is alive even while holding the same target');
+    assert.ok(max - min > 1.4, 'the gaze is alive even while holding the same target');
   }
 });
 
@@ -637,7 +640,7 @@ test('resting eyelid acting is visible at default energy while attention stays o
       tilts.push(pose.tilt);
       upperBends.push(pose.ruc);
       sharedBends.push(pose.ra);
-      assert.ok(Math.abs(pose.gazeX - 10) < 0.6);
+      assert.ok(Math.abs(pose.gazeX - 10) < 1);
     }
     samples[emotion] = {
       opening: Math.max(...heights) - Math.min(...heights),
@@ -646,12 +649,46 @@ test('resting eyelid acting is visible at default energy while attention stays o
       sharedBend: Math.max(...sharedBends) - Math.min(...sharedBends),
     };
   }
-  assert.ok(samples.idle.opening > 0.07 && samples.idle.opening < 0.13,
+  assert.ok(samples.idle.opening > 0.11 && samples.idle.opening < 0.145,
     'resting eyelids should move without changing the expression into another pose');
-  assert.ok(samples.idle.upperBend > 0.6, 'the upper and lower lids should flex independently');
+  assert.ok(samples.idle.upperBend > 1.4, 'the upper and lower lids should flex independently');
   assert.ok(samples.curious.tilt > 0.008 && samples.curious.tilt < 0.018,
     'curiosity should lean gently instead of skewing the eye blocks');
   assert.ok(samples.confused.tilt > 0.008 && samples.confused.tilt < 0.018);
   assert.ok(samples.happy.sharedBend > 3.8 && samples.happy.sharedBend < 5);
   assert.ok(samples.focused.opening < samples.idle.opening / 3, 'focus retains its steady acting');
+});
+
+test('idle breathing stays continuous, visible and distinct across three calm cycles', () => {
+  const core = globalThis.EyesCore;
+  const duration = core.getPerformanceDuration('idle');
+  const simulation = new EyeSimulation({ random: () => 0.5 });
+  simulation.follow = false;
+  const heights = [], widths = [], centres = [];
+  let maxStep = 0, previous;
+  for (let i = 0; i < (duration + 1) * 60; i++) {
+    const pose = simulation.update(1 / 60).pose;
+    if (i < 120) continue;
+    const geometry = getEyeGeometry(pose, 'r', 0, 0);
+    heights.push(geometry.height);
+    widths.push(geometry.width);
+    centres.push(pose.ry);
+    if (previous !== undefined) maxStep = Math.max(maxStep, Math.abs(geometry.height - previous));
+    previous = geometry.height;
+  }
+  assert.ok(Math.max(...heights) - Math.min(...heights) > 15,
+    'the default idle breath visibly changes eyelid opening');
+  assert.ok(Math.max(...widths) - Math.min(...widths) > 1.4,
+    'the breath widens and narrows the eye body rather than only bobbing vertically');
+  assert.ok(Math.max(...centres) - Math.min(...centres) > 6,
+    'the eye centre rises and settles with the breath');
+  assert.ok(maxStep < 0.25, 'continuous springs cannot introduce a one-frame eyelid jump');
+  let peaks = 0;
+  for (let i = 2; i < heights.length - 2; i++) {
+    if (heights[i] > heights[i - 2] && heights[i] > heights[i + 2] &&
+        heights[i] > getPose('idle').rh * 1.02) peaks++;
+  }
+  // A peak is counted once per plateau; adjacent samples can share the same
+  // rounded maximum, so require repeated visible breaths rather than exactly 3.
+  assert.ok(peaks >= 3, 'three calm breaths replace the old isolated idle beats');
 });
