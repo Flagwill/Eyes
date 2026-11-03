@@ -277,7 +277,7 @@ var EyesCore = (function () {
     };
   }
 
-  function getFaceMatrix(yaw, pitch, roll) {
+  function getFaceMatrix(yaw, pitch, roll, scale) {
     var cy = Math.cos(yaw), sy = Math.sin(yaw);
     var cp = Math.cos(pitch), sp = Math.sin(-pitch);
     var cr = Math.cos(roll || 0), sr = Math.sin(roll || 0);
@@ -286,9 +286,12 @@ var EyesCore = (function () {
     // invert to bring the top edge toward the viewer. Flattening the output
     // depth avoids Qt's implicit camera and CSS clipping disagreeing;
     // homogeneous w retains the true perspective division. Row-major,
-    // matching Qt.matrix4x4.
-    return [cy*cr+sy*sp*sr, -cy*sr+sy*sp*cr, 0, 0,
-      cp*sr, cp*cr, 0, 0,
+    // matching Qt.matrix4x4. An optional uniform scale (the mood's lean
+    // toward the viewer) multiplies only the screen rows, so the pivot and
+    // perspective division stay put.
+    var k = scale === undefined ? 1 : scale;
+    return [k*(cy*cr+sy*sp*sr), k*(-cy*sr+sy*sp*cr), 0, 0,
+      k*cp*sr, k*cp*cr, 0, 0,
       0, 0, 1, 0,
       (sy*cr-cy*sp*sr)/850, (-sy*sr-cy*sp*cr)/850, 0, 1];
   }
@@ -502,10 +505,10 @@ var EyesCore = (function () {
       {leftLift:.55, rightLift:-.72, leftTension:.7, rightTension:-.55,
         asymmetry:.006, tilt:-.0022}],
     happy: [
-      // A small head tilt as the smile deepens; roll only reaches the face
-      // matrix, never the authored lid shapes.
+      // A small head tilt as the smile deepens, rocking back the other way on
+      // the later lift; roll only reaches the face matrix, never the lids.
       {bend:6.5, lift:-3.5, spacing:-1.3, tilt:.018},
-      {bend:3.5, leftLift:-1.8},
+      {bend:3.5, leftLift:-1.8, tilt:-.012},
       {rightLift:-2.5}],
     curious: [
       {open:.03, asymmetry:.055, rightTension:2.8, leftTension:-1.5,
@@ -515,9 +518,11 @@ var EyesCore = (function () {
         upperBend:-1.6, lowerBend:.5, leftSlope:3, rightSlope:-2.2,
         tilt:-.004, spacing:-1.5}],
     thinking: [
+      // Pondering cocks the head away from the raised gaze, then back as
+      // one side relaxes. Roll reaches the face matrix only.
       {open:-.105, upperBend:-2.8, lowerBend:.3, leftTension:-1.5,
-        leftLift:1.2, leftSlope:2.2, rightSlope:-.8, tilt:-.004},
-      {open:.065, upperBend:1.5, rightTension:1.8, rightLift:-2.4, tilt:.004},
+        leftLift:1.2, leftSlope:2.2, rightSlope:-.8, tilt:-.011},
+      {open:.065, upperBend:1.5, rightTension:1.8, rightLift:-2.4, tilt:.007},
       {open:.025, leftLift:-.8, rightLift:-1.4, leftTension:.8, rightTension:1.6, spacing:-.5}],
     focused: [
       {open:-.028, upperBend:-.55, lowerBend:.2, spacing:-.6},
@@ -636,20 +641,25 @@ var EyesCore = (function () {
       return [breath * .86, (1 - breath) * .86, transition * .14];
     }
     if (emotion === 'sleepy') return [
-      beat(t,3.3,2.2,.65,.7)+beat(t,9.8,1.8,.4,.85)*.7,
-      beat(t,3.55,2.2,.65,.7)+beat(t,10.05,1.8,.4,.85)*.7,
-      beat(t,13.3,.25,.35,.65)];
+      beat(t,SLEEPY_BEATS[0],2.2,.65,.7)+beat(t,SLEEPY_BEATS[0]+6.5,1.8,.4,.85)*.7,
+      beat(t,SLEEPY_BEATS[1],2.2,.65,.7)+beat(t,SLEEPY_BEATS[1]+6.5,1.8,.4,.85)*.7,
+      beat(t,SLEEPY_BEATS[2],.25,.35,.65)];
     return getCueTiming(emotion).map(function (cue) {
       return beat(t, cue[0], cue[1], cue[2], cue[3]);
     });
   }
 
-  // The same beats for the eyes alone. Drowsy eyes keep the slow lid timing.
+  // The first onsets of the layered sleepy droops and of the wake-up start.
+  var SLEEPY_BEATS = [3.3, 3.55, 13.3];
+
+  // The same beats for the eyes alone. Drowsy eyes keep the slow lid timing,
+  // and a pondering glance drifts with its lids (see MOOD_ACTING drift).
   function getGazeCues(emotion, time) {
     if (emotion === 'sleepy') return getActingCues(emotion, time);
     var t = time % getPerformanceDuration(emotion);
-    return getCueTiming(emotion).map(function (cue) {
-      return dartBeat(t, cue[0], cue[1], cue[2], cue[3]);
+    var acting = MOOD_ACTING[emotion], drift = acting && acting.drift;
+    return getCueTiming(emotion).map(function (cue, index) {
+      return (drift && drift[index] ? beat : dartBeat)(t, cue[0], cue[1], cue[2], cue[3]);
     });
   }
 
@@ -758,11 +768,11 @@ var EyesCore = (function () {
       return gaze;
     }
     if (!a && !b && !c) return {x:0,y:0};
-    if (emotion === 'happy') return {x:b*1.8,y:-a*1.2};
-    if (emotion === 'curious') return {x:a*4.8-c*4,y:-a*1.8+c*.8};
-    if (emotion === 'thinking') return {x:-a*5+b*2-c*1.5,y:a*1.5-b*1.2+c*1.1};
+    if (emotion === 'happy') return {x:b*2.6,y:-a*1.6};
+    if (emotion === 'curious') return {x:a*6-c*5,y:-a*2.2+c*1};
+    if (emotion === 'thinking') return {x:-a*6.5+b*2.5-c*1.5,y:a*1.8-b*1.6+c*1.1};
     if (emotion === 'focused') return {x:0,y:0};
-    if (emotion === 'surprised') return {x:c*3.5,y:-a*.9};
+    if (emotion === 'surprised') return {x:c*3.5,y:-a*1.5};
     if (emotion === 'sleepy') return {x:0,y:(a+b)*1.1-c*1.6};
     return {x:-a*3.8+c*4.3,y:-a*.8+c*.6};
   }
@@ -786,6 +796,83 @@ var EyesCore = (function () {
   function getPopGain(id) {
     if (POP_GAINS[id] !== undefined) return POP_GAINS[id];
     return id === 'complete' ? POP_GAINS.happy : POP_GAINS[getActivity(id).base] * .6;
+  }
+
+  // Each mood's body language around its baked lid poses. It reaches runtime
+  // inputs only, so the Rive asset is unchanged:
+  // - blink: [interval seconds, double-blink chance, duration scale];
+  // - lean: uniform face scale toward (+) or away from (-) the viewer, and
+  //   nod: extra face pitch (+ down), each listed for [entry, beat 0, 1, 2]
+  //   at full energy and weighted by the same envelopes as the lids;
+  // - drift: beats whose glance moves with the lids instead of darting;
+  // - events: squash/stretch impulses and blinks on a beat onset (`at`
+  //   seconds later); beat -1 is a one-off counted from the mood change.
+  var MOOD_ACTING = {
+    idle: {blink:[4.5,.16,1], lean:[0,.004,0,0], nod:[0,-.008,0,0]},
+    happy: {blink:[5.2,.22,1], lean:[.01,.008,0,0], nod:[-.03,-.02,0,0],
+      events:[{beat:0, pop:-.6}, {beat:0, at:.3, pop:-.4}, {beat:1, pop:-.45}]},
+    curious: {blink:[5.4,.1,1], lean:[.01,.014,.006,.01], nod:[0,-.012,0,.015],
+      events:[{beat:0, pop:-.5}]},
+    thinking: {blink:[5.6,.12,1], lean:[-.006,-.008,0,.008], nod:[0,0,0,-.01],
+      drift:[1,1,0], events:[{beat:2, pop:-.55, blink:.7}]},
+    focused: {blink:[6.5,.06,.92], lean:[.008,.005,-.003,.004], nod:[.02,.01,0,0],
+      events:[{beat:0, pop:.35}]},
+    surprised: {blink:[4.2,.3,.9], lean:[-.016,-.008,.004,0], nod:[-.035,-.015,0,0],
+      events:[{beat:-1, at:.88, blink:1, double:true}, {beat:0, pop:-.6}]},
+    sleepy: {blink:[3.5,.16,1.65], lean:[-.008,-.006,-.006,.008], nod:[.04,.035,.035,-.04],
+      events:[{beat:2, pop:-.8, blink:.8, double:true}]},
+    confused: {blink:[4.6,.26,1], lean:[-.008,.01,0,-.006], nod:[.01,0,0,0],
+      events:[{beat:0, pop:.45}, {beat:2, pop:-.4}]},
+  };
+  // Completion performs the happy gestures, so it borrows all of happy.
+  MOOD_ACTING.complete = MOOD_ACTING.happy;
+  var LEAN_LIMIT = 0.02, ACTIVITY_BODY_SHARE = 0.6;
+
+  function getMood(id) {
+    return MOOD_ACTING[id] ? id : getActivity(id).base;
+  }
+
+  // Other activities show their prop gestures, so they keep only the base
+  // mood's blink habit and a softer arrival, like their softer pop.
+  function getBodyActing(emotion, time, age, cues) {
+    var own = MOOD_ACTING[emotion], acting = own || MOOD_ACTING[getMood(emotion)];
+    var share = own ? 1 : ACTIVITY_BODY_SHARE, entry = entryEnvelope(emotion, age);
+    var result = {lean: acting.lean[0] * entry, nod: acting.nod[0] * entry};
+    if (own) {
+      cues = cues || getActingCues(emotion, time);
+      for (var i = 0; i < 3; i++) {
+        result.lean += acting.lean[i + 1] * cues[i];
+        result.nod += acting.nod[i + 1] * cues[i];
+      }
+    }
+    result.lean *= share;
+    result.nod *= share;
+    return result;
+  }
+
+  var ACTING_EVENTS = {};
+
+  function getActingEvents(emotion) {
+    if (ACTING_EVENTS[emotion]) return ACTING_EVENTS[emotion];
+    var acting = MOOD_ACTING[emotion], starts = emotion === 'sleepy' ? SLEEPY_BEATS
+      : acting && acting.events ? getCueTiming(emotion).map(function (cue) { return cue[0]; }) : [];
+    ACTING_EVENTS[emotion] = (acting && acting.events || []).map(function (event) {
+      return {at: (event.beat < 0 ? 0 : starts[event.beat]) + (event.at || 0),
+        once: event.beat < 0, pop: event.pop || 0, blink: event.blink || 0,
+        double: Boolean(event.double)};
+    });
+    return ACTING_EVENTS[emotion];
+  }
+
+  // Whether a looping cue at `at` falls in (previous, current] of performance
+  // time; one-off cues only count in the first cycle.
+  function cueCrossed(previous, current, at, duration, once) {
+    if (once) return previous < at && at <= current;
+    for (var cycle = Math.floor(previous / duration); cycle <= Math.floor(current / duration); cycle++) {
+      var time = cycle * duration + at;
+      if (previous < time && time <= current) return true;
+    }
+    return false;
   }
 
   var SPRING_REST = 1e-9;
@@ -875,7 +962,11 @@ var EyesCore = (function () {
       x: new Spring(0, 180, 28),
       y: new Spring(0, 180, 28),
     };
-    this.face = {yaw: new Spring(0, 95, 21), pitch: new Spring(0, 85, 20)};
+    // Lean is a slow, critically damped approach toward or away from the
+    // viewer; it carries a mood's posture, never a bounce.
+    this.face = {yaw: new Spring(0, 95, 21), pitch: new Spring(0, 85, 20),
+      lean: new Spring(0, 60, 15.5)};
+    this.actingClock = 0;
     this.attentionTarget = { x: 0, y: 0 };
     this.attentionAt = -10;
     this.emotionAt = 0;
@@ -916,6 +1007,7 @@ var EyesCore = (function () {
     this.emotionAt = this.elapsed;
     this.emotionNaturalAt = this.flowTime;
     this.performanceStarts[id] = this.flowTime;
+    this.actingClock = 0;
     this.fixationAt = this.flowTime;
     this.attentionAt = this.elapsed;
     if (!this.reducedMotion) kickPop(this, getPopGain(id));
@@ -933,14 +1025,9 @@ var EyesCore = (function () {
   EyeSimulation.prototype.blink = function (doubleBlink) {
     this.blinkStart = this.elapsed;
     this.doubleBlink = Boolean(doubleBlink);
-    this.blinkDuration = this.emotion === 'sleepy' ? 1.65
-      : this.emotion === 'focused' ? 0.92 : 1;
-    var interval = this.emotion === 'focused'
-      ? 6.5
-      : this.emotion === 'sleepy'
-        ? 3.5
-        : 4.5;
-    this.nextBlink = this.flowTime + interval + this.random() * 2.6;
+    var style = MOOD_ACTING[getMood(this.emotion)].blink;
+    this.blinkDuration = style[2];
+    this.nextBlink = this.flowTime + style[0] + this.random() * 2.6;
   };
 
   EyeSimulation.prototype.look = function (x, y, duration) {
@@ -981,10 +1068,25 @@ var EyesCore = (function () {
       : { x: 0, y: 0 };
     var canBlink = alive && !(this.emotion === 'surprised' && t - this.emotionAt < 0.9);
 
+    // Beat-synchronised hops and blinks. Performance time only advances with
+    // natural motion, so pausing never fires a missed cue on resume. Acted
+    // blinks run before the automatic one, which they reschedule, and may
+    // close the surprise hold: that is where its double take belongs.
+    var performanceTime = naturalTime - this.emotionNaturalAt;
+    if (alive && performanceTime > this.actingClock) {
+      var events = getActingEvents(this.emotion);
+      var cycle = getPerformanceDuration(this.emotion);
+      for (var cue of events) {
+        if (!cueCrossed(this.actingClock, performanceTime, cue.at, cycle, cue.once)) continue;
+        if (cue.pop) kickPop(this, cue.pop);
+        if (cue.blink && t - this.blinkStart > 0.8 &&
+            (cue.blink >= 1 || this.random() < cue.blink)) this.blink(cue.double);
+      }
+    }
+    this.actingClock = performanceTime;
+    var mood = getMood(this.emotion);
     if (canBlink && naturalTime > this.nextBlink) {
-      var doubleChance = this.emotion === 'focused' ? 0.06
-        : this.emotion === 'confused' ? 0.26 : 0.16;
-      this.blink(this.random() < doubleChance);
+      this.blink(this.random() < MOOD_ACTING[mood].blink[1]);
     }
     var directed = t < this.gaze.until;
     var pointing = this.follow && (this.pointer.active || t < (this.pointer.until || 0));
@@ -1015,7 +1117,7 @@ var EyesCore = (function () {
     else if (jump > 15 && this.saccadeArmed) {
       this.saccadeArmed = false;
       if (canBlink && t - this.blinkStart > 1.6 &&
-          this.random() < (this.emotion === 'focused' ? 0.35 : 0.55)) {
+          this.random() < (mood === 'focused' ? 0.35 : 0.55)) {
         this.blink(this.random() < 0.1);
       }
     }
@@ -1086,8 +1188,13 @@ var EyesCore = (function () {
     // 0.04 rad per 60 Hz frame turn rate the face regression allows.
     this.face.yaw.damping = reduce ? 30 : 16;
     this.face.pitch.damping = reduce ? 30 : 15;
+    var body = alive ? getBodyActing(this.emotion, performanceTime,
+      t - this.emotionAt, currentCues) : {lean: 0, nod: 0};
     var faceYaw = this.face.yaw.step(faceTarget.yaw, dt);
-    var facePitch = this.face.pitch.step(faceTarget.pitch, dt);
+    var facePitch = this.face.pitch.step(Math.max(-0.28, Math.min(0.28,
+      faceTarget.pitch + body.nod * energy)), dt);
+    var faceLean = this.face.lean.step(Math.max(-LEAN_LIMIT, Math.min(LEAN_LIMIT,
+      body.lean * energy)), dt);
     if (!reduce) this.lightTime += dt;
     var pop = this.pop.step(0, dt);
     var bounce = reduce ? 0 : Math.max(-0.03, Math.min(0.03, pop * (0.3 + energy)));
@@ -1149,7 +1256,8 @@ var EyesCore = (function () {
     riveInputs.propdown = Math.max(0, Math.min(1, values.gazeY / 28)) * 100;
     this.lastFrame = {
       pose: values,
-      face: {yaw: faceYaw, pitch: facePitch, matrix: getFaceMatrix(faceYaw, facePitch, values.tilt)},
+      face: {yaw: faceYaw, pitch: facePitch, lean: faceLean,
+        matrix: getFaceMatrix(faceYaw, facePitch, values.tilt, 1 + faceLean)},
       riveInputs: riveInputs,
       blink: blinkAmount((t - this.blinkStart) / this.blinkDuration, this.doubleBlink),
       breathe: alive ? (Math.sin(naturalTime * 1.15) * 0.0035 +
@@ -1522,6 +1630,8 @@ var EyesCore = (function () {
     getAmbientGaze: getAmbientGaze,
     getAmbientLean: getAmbientLean,
     getGazeCues: getGazeCues,
+    getBodyActing: getBodyActing,
+    getActingEvents: getActingEvents,
     getFixationMotion: getFixationMotion,
     getExpressionAccent: getExpressionAccent,
     getPerformancePose: getPerformancePose,

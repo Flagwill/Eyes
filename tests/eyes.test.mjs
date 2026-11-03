@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Spring, EyeSimulation, drawLight, getPose, blinkAmount, getLayout, getPointerGaze, getAttentionPose, getEyeGeometry, getEyeEdges, getSurfacePoint, rig, getLight, getLightGeometry, getLightFragments, eyePath, EMOTIONS, attentionEnvelope, getAmbientGaze, getAmbientLean, getGazeCues, getFixationMotion, getExpressionAccent, EXPRESSIONS } from '../eyes.js';
+import { Spring, EyeSimulation, drawLight, getPose, blinkAmount, getLayout, getPointerGaze, getAttentionPose, getEyeGeometry, getEyeEdges, getSurfacePoint, rig, getLight, getLightGeometry, getLightFragments, eyePath, EMOTIONS, attentionEnvelope, getAmbientGaze, getAmbientLean, getGazeCues, getBodyActing, getActingEvents, getFaceMatrix, getFixationMotion, getExpressionAccent, EXPRESSIONS } from '../eyes.js';
 
 test('every emotion shares a finite morphable pose with positive eye sizes', () => {
   const keys = Object.keys(getPose('idle'));
@@ -833,4 +833,166 @@ test('ambient head lean follows the natural-motion energy', () => {
     assert.equal(Math.abs(getAmbientLean('idle', t, 0)), 0);
     assert.ok(Math.abs(getAmbientLean('idle', t, 0.5) - getAmbientLean('idle', t) / 2) < 1e-12);
   }
+});
+
+// Cue times land on the first 60 Hz frame at or after the beat.
+function assertTimes(actual, expected, message) {
+  assert.equal(actual.length, expected.length, `${message}: ${actual}`);
+  expected.forEach((time, i) => assert.ok(Math.abs(actual[i] - time) <= 0.021, `${message}: ${actual}`));
+}
+
+function actedRun(id, seconds, configure = () => {}) {
+  const simulation = new EyeSimulation({ random: () => 0.5 });
+  simulation.follow = false;
+  configure(simulation);
+  // Impulses land between pop spring steps; the step itself is not a kick.
+  let settled = simulation.pop.velocity, kicked = 0;
+  const step = simulation.pop.step;
+  simulation.pop.step = function (...args) {
+    kicked = this.velocity - settled;
+    const value = step.apply(this, args);
+    settled = this.velocity;
+    return value;
+  };
+  simulation.setEmotion(id);
+  const kicks = [], blinks = [];
+  let lastBlink = simulation.blinkStart;
+  for (let i = 0; i < seconds * 60; i++) {
+    simulation.update(1 / 60);
+    const age = simulation.elapsed - simulation.emotionAt;
+    if (Math.abs(kicked) > 0.05) kicks.push(Math.round(age * 100) / 100);
+    if (simulation.blinkStart !== lastBlink) {
+      blinks.push({ at: Math.round(age * 100) / 100, double: simulation.doubleBlink });
+      lastBlink = simulation.blinkStart;
+    }
+  }
+  return { simulation, kicks, blinks };
+}
+
+test('each mood has its own body language: lean, nod and posture follow its beats', () => {
+  const core = globalThis.EyesCore;
+  const at = (id, t, age = 10) => getBodyActing(id, t, age);
+  assert.ok(at('curious', 1.9).lean > 0.012, 'curiosity leans in on its first look');
+  assert.ok(at('thinking', 3.2).lean < -0.006 && at('thinking', 11.9).lean > 0.006,
+    'thinking draws back to ponder and comes forward on the idea');
+  assert.ok(at('sleepy', 6).nod > 0.05, 'a drowsy droop nods the head down');
+  assert.ok(at('sleepy', 13.75).nod < -0.03, 'waking up lifts it again');
+  assert.ok(at('surprised', 0.2, 0.2).lean < -0.01 && at('surprised', 0.2, 0.2).nod < -0.02,
+    'surprise recoils and lifts the head on arrival');
+  assert.ok(at('focused', 0.4, 0.4).lean > 0 && at('focused', 0.4, 0.4).nod > 0, 'focus leans into the work');
+  assert.ok(at('happy', 1.6).nod < -0.015, 'a deepening smile lifts the chin');
+  assert.deepEqual(at('complete', 1.6), at('happy', 1.6), 'completion performs as happy');
+  assert.deepEqual(at('reading', 5), { lean: 0, nod: 0 }, 'prop activities keep only their arrival');
+  const reading = at('reading', 0.4, 0.4), focused = at('focused', 0.4, 0.4);
+  assert.ok(Math.abs(reading.lean - focused.lean * 0.6) < 1e-12);
+  for (const { id } of EXPRESSIONS) {
+    const duration = core.getPerformanceDuration(id);
+    for (let t = 0; t < duration * 2; t += 0.05) {
+      const body = at(id, t, t);
+      assert.ok(Math.abs(body.lean) <= 0.025 && Math.abs(body.nod) <= 0.08, `${id}: body acting stays small`);
+    }
+    for (const t of [0, duration - 0.001]) {
+      const body = at(id, t);
+      assert.ok(Math.abs(body.lean) < 1e-6 && Math.abs(body.nod) < 1e-6,
+        `${id}: posture is back at rest across the loop seam`);
+    }
+  }
+});
+
+test('mood lean reaches one face matrix smoothly, scales with energy and stops for reduced motion', () => {
+  const plain = getFaceMatrix(0.2, -0.1, 0.02), unit = getFaceMatrix(0.2, -0.1, 0.02, 1);
+  assert.deepEqual(unit, plain, 'no lean leaves the matrix bit-identical');
+  const near = getFaceMatrix(0, 0, 0, 1.02);
+  assert.deepEqual([near[0] * 100 + near[1] * 50, near[4] * 100 + near[5] * 50], [102, 51]);
+  function sweep(id, configure) {
+    const simulation = new EyeSimulation({ random: () => 0.99 });
+    simulation.follow = false;
+    configure(simulation);
+    simulation.setEmotion(id);
+    let maxLean = 0, minLean = 0, maxPitch = -1, minPitch = 1, step = 0, previous;
+    for (let i = 0; i < 16 * 60; i++) {
+      const face = simulation.update(1 / 60).face;
+      maxLean = Math.max(maxLean, face.lean); minLean = Math.min(minLean, face.lean);
+      if (i > 60) { maxPitch = Math.max(maxPitch, face.pitch); minPitch = Math.min(minPitch, face.pitch); }
+      if (previous) step = Math.max(step, Math.abs(face.lean - previous.lean), Math.abs(face.pitch - previous.pitch));
+      previous = face;
+    }
+    return { maxLean, minLean, maxPitch, minPitch, step };
+  }
+  const curious = sweep('curious', () => {});
+  assert.ok(curious.maxLean > 0.008 && curious.maxLean <= 0.02, 'curiosity visibly leans in, within the limit');
+  assert.ok(curious.step < 0.006, 'posture changes stay continuous');
+  const still = sweep('sleepy', sim => { sim.energy = 0; });
+  const drowsy = sweep('sleepy', () => {});
+  assert.ok(still.maxLean === 0 && still.minLean === 0, 'no energy, no lean');
+  assert.ok(drowsy.maxPitch > still.maxPitch + 0.03, 'drowsy nods add to the held downward tilt');
+  assert.ok(drowsy.minPitch < still.minPitch - 0.01, 'the wake-up lifts the head above it');
+  const reduced = sweep('surprised', sim => { sim.reducedMotion = true; });
+  assert.ok(reduced.maxLean === 0 && reduced.minLean === 0);
+});
+
+test('acted beats hop and blink on cue, once per cycle, and never while motion is off', () => {
+  const core = globalThis.EyesCore;
+  const happy = actedRun('happy', 13.4 + 7);
+  assertTimes(happy.kicks, [0, 0.9, 1.2, 6.2, 14.3, 14.6, 19.6],
+    'arrival pop, a giggling double hop, a smaller hop, and the same again next cycle');
+  assertTimes(actedRun('complete', 4.5).kicks, [0, 1.1, 1.4, 3.4], 'completion hops on its own beats');
+  assertTimes(actedRun('reading', 10).kicks, [0], 'prop activities only pop on arrival');
+
+  const surprised = actedRun('surprised', 5);
+  assert.ok(surprised.blinks[0].double && Math.abs(surprised.blinks[0].at - 0.88) <= 0.021,
+    'surprise ends its hold with a double take');
+  assert.ok(surprised.blinks.slice(1).every(blink => blink.at > 0.88 + 0.8));
+  assert.ok(surprised.kicks.some(time => Math.abs(time - 3.6) <= 0.021), 'a second widening stretches the face again');
+
+  const thinking = actedRun('thinking', 12);
+  assert.ok(thinking.kicks.some(time => Math.abs(time - 11.4) <= 0.021) &&
+    thinking.blinks.some(blink => Math.abs(blink.at - 11.4) <= 0.021), 'the idea arrives with a perk and a blink');
+  const sleepy = actedRun('sleepy', 14);
+  assert.ok(sleepy.kicks.some(time => Math.abs(time - 13.3) <= 0.021));
+  assert.ok(sleepy.blinks.at(-1).double && Math.abs(sleepy.blinks.at(-1).at - 13.3) <= 0.021,
+    'waking up blinks twice');
+
+  const paused = actedRun('happy', 3, sim => { sim.autonomous = false; });
+  assertTimes(paused.kicks, [0], 'cues wait while natural motion is off');
+  assert.deepEqual(actedRun('happy', 3, sim => { sim.reducedMotion = true; }).kicks, []);
+  const resumed = paused.simulation;
+  resumed.autonomous = true;
+  let kicks = 0;
+  for (let i = 0; i < 90; i++) {
+    const velocity = resumed.pop.velocity;
+    resumed.update(1 / 60);
+    if (resumed.pop.velocity - velocity < -0.05) kicks++;
+  }
+  assert.equal(kicks, 2, 'resuming plays the hops in performance time, not the missed ones at once');
+  for (const { id } of EXPRESSIONS) for (const cue of getActingEvents(id))
+    assert.ok(cue.at >= 0 && cue.at < core.getPerformanceDuration(id), `${id}: every cue is inside its cycle`);
+});
+
+test('thinking glances drift with the lids, other moods keep darting', () => {
+  const core = globalThis.EyesCore;
+  let differs = false;
+  for (let t = 0; t < 14.2; t += 0.02) {
+    const lids = core.getActingCues('thinking', t), gaze = getGazeCues('thinking', t);
+    assert.equal(gaze[0], lids[0]);
+    assert.equal(gaze[1], lids[1]);
+    if (Math.abs(gaze[2] - lids[2]) > 0.05) differs = true;
+  }
+  assert.ok(differs, 'the idea still darts');
+  assert.ok(getAmbientGaze('curious', 1.9).x > 5, 'curious looks a little farther');
+});
+
+test('activities inherit their mood’s blink habit', () => {
+  const next = {};
+  for (const id of ['idle', 'listening', 'focused', 'reading', 'sleepy', 'retrying']) {
+    const simulation = new EyeSimulation({ random: () => 0.5 });
+    simulation.autonomous = false;
+    simulation.setEmotion(id);
+    simulation.blink();
+    next[id] = { next: simulation.nextBlink - simulation.flowTime, duration: simulation.blinkDuration };
+  }
+  assert.deepEqual(next.listening, next.idle);
+  assert.deepEqual(next.reading, next.focused);
+  assert.deepEqual(next.retrying, next.focused);
+  assert.ok(next.sleepy.duration > next.idle.duration && next.reading.next > next.idle.next + 1.5);
 });
