@@ -12,6 +12,8 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 
 - 桌面层只能覆盖壁纸。桌面图标、任务栏、普通应用窗口和系统面板必须位于 Eyes 上方。
 - 桌面必须使用 Plasma 原生壁纸插件；后台不能创建全屏窗口，插件不能接管鼠标或键盘输入。
+- Eyes 只在主屏显示：挂载只选 Plasma 屏幕 0（始终对应优先级最高的输出）上的桌面，
+  每个活动各一个；其他显示器保留原壁纸。恢复仍覆盖所有有保存记录的桌面。见 ADR-013 修订。
 - 桌面壁纸只渲染磨砂背景、双眼及共享表情附属元素，不渲染标题、状态说明、产品名或 HUD 角标；文字只保留在浏览器调试台与控制面板。
 - 双眼是全屏视觉中心；尺寸随屏幕缩放，不设置会限制大屏表现的固定像素上限。沉浸构图纵向拉长 1.28 倍，中心位于高度约 43%，纵向注视整体位移乘以 0.7；浏览器和桌面必须共用 getLayout。
 - 眼形采用无圆角的矩形/弯带；主体与边缘均保持清晰，只保留像素级抗锯齿；禁止眼形模糊、边缘羽化、外围光晕或圆角。
@@ -118,6 +120,7 @@ eyes quit
 - Plasma 的 QQmlEngine 会缓存旧组件，切换壁纸类型不保证加载新代码。安装器比较场景、共享模型、`.riv` 和 native plugin，变化时刷新 `plasma-plasmashell.service`；验证须在实际 Plasma 日志看到 `Eyes GPU wallpaper loaded` 和 `Eyes Rive wallpaper loaded`。
 - 壁纸只在 Eyes 显示期间临时挂载：启动先恢复崩溃或旧版本残留，`shownChanged=true` 才保存原插件与完整壁纸配置并切到 Eyes，隐藏或 `complete` 淡出后恢复，退出前阻塞式恢复。状态文件默认 `$XDG_STATE_HOME/eyes/wallpaper-origin.json`（`0600`），只记录 formfactor=0 的桌面 containment，不记录或修改面板。安装器不得主动挂载 Eyes；用户显示期间主动换壁纸时新选择优先。壁纸包 URL 必须原样保留，由 `main.qml` 的 Plasma `DayNightWallpaper` 按当前颜色方案解析 `images` / `images_dark`，不能在配置文件里冻结为亮色图片。参见 ADR-013。
 - 挂载和恢复必须同时更新配置文件与运行中的 containment。`kwriteconfig6 --notify` 只保存键值，不能可靠切换已运行的插件，因此成功后还要通过 PlasmaShell `evaluateScript` 按运行中的 `desktop.id` 应用；状态只能在文件和运行时都成功后清除。状态桥客户端须在 URL 就绪后激活，并在 `Open` 后主动请求快照。
+- plasmashell 持有自己的配置副本，`kwriteconfig6` 写入的 Eyes `Image/Color/FillMode` 不会被它新建的壁纸读到（会只剩浅色兜底底色）。挂载脚本必须在同一段 `evaluateScript` 里先切换到 Eyes，再用 `writeConfig` 写入这些值；`writeConfig` 会把值推给当时正在显示的壁纸、不看所选配置组，所以绝不能在切换前或切换未生效时写。mock 测试复现不了这一点，修改挂载流程后须在隔离的嵌套 Plasma 会话中验证。
 - 可临时设置壁纸配置 `DebugPerformance=true`，日志每 5 秒报告 `EYES_PERF GPU`。不要只凭独立测试窗口的帧率宣布桌面已修复。完成测量后关闭日志。
 - 常驻默认 `AnimationFps=60`（20–60）。`AnimationClock.qml` 仍用 FrameAnimation 累计真实帧间隔，隐藏后停钟且不追补隐藏时间。`cmake/RiveScheduling.cmake` 让 Rive 仅随模型更新，在当前帧 prepare 阶段绘制并缓存向量和 SMAA；不要恢复原生自刷新或每帧反向输入轮询。淡出后 Loader 卸载眼睛场景以释放渲染目标；宿主继续待命。见 ADR-008。
 - WebSocket 桥仅监听 `127.0.0.1:38271`。断开后必须隐藏画面，避免后台停止后仍残留最后一帧眼睛。

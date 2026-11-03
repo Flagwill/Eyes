@@ -143,6 +143,27 @@ def containment_sections(
     return result
 
 
+def screen_index(parser: configparser.RawConfigParser, section: str) -> int:
+    """Plasma screen of a desktop; a config without lastScreen is single-screen."""
+    try:
+        return int(parser.get(section, "lastScreen", fallback="0").strip() or "0")
+    except ValueError:
+        return -1
+
+
+def primary_desktops(
+    parser: configparser.RawConfigParser,
+    desktops: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    """Return desktops on Plasma screen 0, the primary output."""
+    screens = [screen_index(parser, section) for _, section in desktops]
+    return [
+        desktop
+        for desktop, screen in zip(desktops, screens)
+        if screen == 0
+    ]
+
+
 def wallpaper_config(
     parser: configparser.RawConfigParser,
     containment_id: str,
@@ -447,13 +468,34 @@ def restore_containment(
     return actions
 
 
-def runtime_script(plugins: dict[str, str]) -> str:
+def runtime_script(
+    plugins: dict[str, str],
+    settings: dict[str, dict[str, str]] | None = None,
+) -> str:
+    """Switch running desktops and hand them their wallpaper settings.
+
+    plasmashell keeps its own copy of the desktop config, so values written
+    with kwriteconfig6 alone are not seen by a wallpaper it creates. writeConfig
+    also pushes each value into the wallpaper that is live at that moment,
+    whatever group is selected, so it must run after the plugin switch, never
+    before it: otherwise the values would leak into the original wallpaper.
+    """
     encoded = json.dumps(plugins, ensure_ascii=True, separators=(",", ":"))
+    values = json.dumps(settings or {}, ensure_ascii=True, separators=(",", ":"))
     return (
         f"const targets = {encoded};"
+        f"const settings = {values};"
         "desktops().forEach(function(desktop) {"
-        "const plugin = targets[String(desktop.id)];"
-        "if (plugin) desktop.wallpaperPlugin = plugin;"
+        "const id = String(desktop.id);"
+        "const plugin = targets[id];"
+        "if (!plugin) return;"
+        "desktop.wallpaperPlugin = plugin;"
+        "const values = settings[id];"
+        "if (!values || desktop.wallpaperPlugin !== plugin) return;"
+        "desktop.currentConfigGroup = ['Wallpaper', plugin, 'General'];"
+        "Object.keys(values).forEach(function(key) {"
+        "desktop.writeConfig(key, values[key]);"
+        "});"
         "});"
     )
 
@@ -462,6 +504,7 @@ def activate_runtime(
     plugins: dict[str, str],
     *,
     dry_run: bool,
+    settings: dict[str, dict[str, str]] | None = None,
 ) -> tuple[bool, list[str], str]:
     executable = next(
         (
@@ -476,7 +519,7 @@ def activate_runtime(
         "org.kde.plasmashell",
         "/PlasmaShell",
         "org.kde.PlasmaShell.evaluateScript",
-        runtime_script(plugins),
+        runtime_script(plugins, settings),
     ]
     if dry_run:
         print("would run:", " ".join(command), file=sys.stderr)
@@ -501,10 +544,17 @@ def mount(
     desktops: list[tuple[str, str]],
     state: dict[str, Any],
     executable: str,
-) -> tuple[dict[str, Any], list[str], list[list[str]], list[dict[str, Any]]]:
+) -> tuple[
+    dict[str, Any],
+    list[str],
+    list[list[str]],
+    list[dict[str, Any]],
+    dict[str, dict[str, str]],
+]:
     changed: list[str] = []
     actions: list[list[str]] = []
     containments: list[dict[str, Any]] = []
+    settings: dict[str, dict[str, str]] = {}
     current_state = state["containments"]
 
     for containment_id, section in desktops:
@@ -541,6 +591,7 @@ def mount(
         desired = desired_eyes_values(
             origin or {"plugin": "", "wallpaper": {}}, current_eyes
         )
+        settings[containment_id] = desired
         common = ["Containments", containment_id]
         eyes_group = common + ["Wallpaper", WALLPAPER_PLUGIN, "General"]
         containment_changed = False
@@ -578,7 +629,7 @@ def mount(
                 "pending": origin is None and current_plugin == WALLPAPER_PLUGIN,
             }
         )
-    return state, changed, actions, containments
+    return state, changed, actions, containments, settings
 
 
 def restore(
@@ -747,14 +798,21 @@ def main() -> int:
         return 1
 
     runtime_plugins: dict[str, str] = {}
+    runtime_settings: dict[str, dict[str, str]] = {}
     try:
         if args.mode == "mount":
-            state, changed, actions, containments = mount(
-                args, config, desktops, state, executable or "kwriteconfig6"
+            # Eyes appears on the primary screen only. Restore still covers
+            # every desktop, including ones mounted by earlier releases.
+            state, changed, actions, containments, runtime_settings = mount(
+                args,
+                config,
+                primary_desktops(config, desktops),
+                state,
+                executable or "kwriteconfig6",
             )
             runtime_plugins = {
                 containment_id: WALLPAPER_PLUGIN
-                for containment_id, _ in desktops
+                for containment_id in runtime_settings
             }
             if not args.dry_run:
                 # Persist the origin before changing any live or saved plugin.
@@ -783,7 +841,7 @@ def main() -> int:
 
     if args.activate_runtime and runtime_plugins:
         runtime_ok, runtime_action, runtime_error = activate_runtime(
-            runtime_plugins, dry_run=args.dry_run
+            runtime_plugins, dry_run=args.dry_run, settings=runtime_settings
         )
         if runtime_action:
             actions.append(runtime_action)

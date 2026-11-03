@@ -6,6 +6,7 @@
 - Desktop product path is `RiveEyeScene.qml` through the native Qt Quick RHI plugin. `EyeScene.qml` and `eye.frag` are the GPU geometry reference, not alternate expression implementations.
 - `desktop/main.cpp` is a windowless Qt host: Unix socket, WebSocket, D-Bus, tray, and per-screen cursor mapping. The visible desktop surface belongs to the Plasma wallpaper plugin.
 - Plasma wallpaper mount is temporary and reversible. Preserve original containment state, update both config and the running containment, and restore on hide, complete fade, crash recovery, and quit.
+- Mount targets Plasma screen 0 (primary) desktops only; restore covers all saved desktops. plasmashell does not reread `kwriteconfig6` edits, so the runtime script must switch the plugin before calling `writeConfig` for Image/Color/FillMode. Because `writeConfig` affects the live wallpaper, call it only after Eyes is active. Mocks cover operation order; verify actual behavior in an isolated nested Plasma session (ADR-013).
 - Rive scheduling is demand-driven from the shared model clock. Do not restore native self-refresh or per-frame reverse input polling.
 - Keep generated `build/` output, QSB files, caches, and runtime logs out of version control.
 - Vector target ratio comes from `Window.window.devicePixelRatio` (Qt 6.11+, fallback `Screen.devicePixelRatio`). Wayland rounds the screen ratio (2 at KDE scale 1.4) while the window renders at 1.4; sizing from the screen ratio doubled the MSAA target area (ADR-016).

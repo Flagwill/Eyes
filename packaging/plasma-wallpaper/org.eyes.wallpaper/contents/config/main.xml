@@ -16,5 +16,13 @@
       <label>The wallpaper rendered below Eyes</label>
       <default></default>
     </entry>
+    <entry name="Color" type="String">
+      <label>Background behind the original wallpaper</label>
+      <default>#d8d2df</default>
+    </entry>
+    <entry name="FillMode" type="Int">
+      <label>Fill mode copied from the original wallpaper</label>
+      <default>2</default>
+    </entry>
   </group>
 </kcfg>

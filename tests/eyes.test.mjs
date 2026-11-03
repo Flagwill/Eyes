@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Spring, EyeSimulation, drawLight, getPose, blinkAmount, getLayout, getPointerGaze, getAttentionPose, getEyeGeometry, getEyeEdges, getSurfacePoint, rig, getLight, getLightGeometry, getLightFragments, eyePath, EMOTIONS, attentionEnvelope, getAmbientGaze, getFixationMotion, getExpressionAccent } from '../eyes.js';
+import { Spring, EyeSimulation, drawLight, getPose, blinkAmount, getLayout, getPointerGaze, getAttentionPose, getEyeGeometry, getEyeEdges, getSurfacePoint, rig, getLight, getLightGeometry, getLightFragments, eyePath, EMOTIONS, attentionEnvelope, getAmbientGaze, getAmbientLean, getGazeCues, getFixationMotion, getExpressionAccent, EXPRESSIONS } from '../eyes.js';
 
 test('every emotion shares a finite morphable pose with positive eye sizes', () => {
   const keys = Object.keys(getPose('idle'));
@@ -499,10 +499,10 @@ test('expression accents resolve once and repeated harness states do not restart
     simulation.setEmotion(emotion.id);
     for (let i = 0; i < 240; i++) simulation.update(1 / 60);
     const emotionAt = simulation.emotionAt;
-    const bounce = simulation.bounce;
+    const pop = { value: simulation.pop.value, velocity: simulation.pop.velocity };
     simulation.setEmotion(emotion.id);
     assert.equal(simulation.emotionAt, emotionAt);
-    assert.equal(simulation.bounce, bounce);
+    assert.deepEqual({ value: simulation.pop.value, velocity: simulation.pop.velocity }, pop);
   }
 });
 
@@ -691,4 +691,146 @@ test('idle breathing stays continuous, visible and distinct across three calm cy
   // A peak is counted once per plateau; adjacent samples can share the same
   // rounded maximum, so require repeated visible breaths rather than exactly 3.
   assert.ok(peaks >= 3, 'three calm breaths replace the old isolated idle beats');
+});
+
+test('eye darts lead the lids out and home, while drowsy eyes keep the slow lid timing', () => {
+  const core = globalThis.EyesCore;
+  for (const {id} of EXPRESSIONS.filter(({id}) => !['idle', 'sleepy'].includes(id))) {
+    const duration = core.getPerformanceDuration(id);
+    for (let beat = 0; beat < 3; beat++) {
+      let lidArrive, gazeArrive, lidHome, gazeHome, peak = 0;
+      for (let t = 0; t < duration; t += 0.005) {
+        const lid = core.getActingCues(id, t)[beat], gaze = getGazeCues(id, t)[beat];
+        assert.ok(gaze >= 0 && gaze <= 1);
+        if (lidArrive === undefined && lid >= 0.9) lidArrive = t;
+        if (gazeArrive === undefined && gaze >= 0.9) gazeArrive = t;
+        peak = Math.max(peak, lid);
+        if (lidArrive !== undefined && lidHome === undefined && lid <= 0.1) lidHome = t;
+        if (gazeArrive !== undefined && gazeHome === undefined && gaze <= 0.1) gazeHome = t;
+      }
+      if (peak < 0.9) continue;
+      assert.ok(gazeArrive <= lidArrive, `${id} beat ${beat}: the eyes arrive first`);
+      assert.ok(gazeHome <= lidHome, `${id} beat ${beat}: the eyes start home first`);
+      assert.equal(getGazeCues(id, duration - 0.001)[beat], 0, `${id}: a glance ends before the loop`);
+    }
+  }
+  for (let t = 0; t < 15.6; t += 0.1) {
+    assert.deepEqual(getGazeCues('sleepy', t), globalThis.EyesCore.getActingCues('sleepy', t));
+  }
+});
+
+test('idle glances vary between cycles without seams and lean the head only while glancing', () => {
+  const duration = globalThis.EyesCore.getPerformanceDuration('idle');
+  const firstGlances = new Set();
+  let previous = getAmbientGaze('idle', 0);
+  for (let t = 0; t < duration * 8; t += 1 / 60) {
+    const gaze = getAmbientGaze('idle', t);
+    assert.ok(Math.hypot(gaze.x - previous.x, gaze.y - previous.y) < 1.6, 'glance targets stay continuous');
+    assert.ok(Math.abs(gaze.x) <= 6.2 && Math.abs(gaze.y) <= 3.4);
+    const lean = getAmbientLean('idle', t);
+    assert.ok(Math.abs(lean) < 0.02);
+    if (gaze.x === 0 && gaze.y === 0) assert.equal(lean, 0, 'no lean while holding the centre');
+    previous = gaze;
+  }
+  for (let cycle = 0; cycle < 8; cycle++) {
+    const glance = getAmbientGaze('idle', cycle * duration + 5.3);
+    firstGlances.add(`${glance.x},${glance.y}`);
+    for (const edge of [cycle * duration + 0.001, (cycle + 1) * duration - 0.001]) {
+      assert.deepEqual(getAmbientGaze('idle', edge), { x: 0, y: 0 }, 'each cycle starts and ends at rest');
+    }
+  }
+  assert.ok(firstGlances.size >= 4, 'successive cycles look in different directions');
+  assert.ok(getAmbientLean('curious', 1.8) > 0, 'other glances lean toward where they look');
+});
+
+test('large attention shifts can be covered by a blink but smooth pursuit adds none', () => {
+  const sweep = new EyeSimulation({ random: () => 0.5 });
+  sweep.setEmotion('idle');
+  for (let i = 0; i < 60; i++) sweep.update(1 / 60);
+  sweep.setPointer(-36, 0, true);
+  for (let i = 0; i < 180; i++) sweep.update(1 / 60);
+  const before = sweep.blinkStart;
+  sweep.setPointer(36, 0, true);
+  for (let i = 0; i < 20; i++) sweep.update(1 / 60);
+  assert.ok(sweep.blinkStart > before, 'a full-screen jump blinks during the move');
+  const refractory = sweep.blinkStart;
+  sweep.setPointer(-36, 0, true);
+  for (let i = 0; i < 20; i++) sweep.update(1 / 60);
+  assert.equal(sweep.blinkStart, refractory, 'jumps right after a blink do not blink again');
+
+  const pursuit = new EyeSimulation({ random: () => 0.5 });
+  pursuit.nextBlink = 1000;
+  for (let i = 0; i < 20 * 60; i++) {
+    pursuit.setPointer(Math.sin(i / 60 * 0.6) * 36, 0, true);
+    pursuit.update(1 / 60);
+  }
+  assert.ok(pursuit.blinkStart < 0.5, 'following a slowly moving cursor does not blink');
+
+  for (const configure of [sim => { sim.reducedMotion = true; }, sim => { sim.autonomous = false; }]) {
+    const quiet = new EyeSimulation({ random: () => 0 });
+    configure(quiet);
+    for (const x of [-36, 36, -36, 36]) {
+      quiet.setPointer(x, 0, true);
+      for (let i = 0; i < 150; i++) quiet.update(1 / 60);
+    }
+    assert.equal(quiet.blinkStart, -10, 'only natural motion adds blinks');
+  }
+});
+
+test('mood changes pop with a signed squash or stretch that stays continuous and bounded', () => {
+  function popFrames(from, to, energy = 0.65) {
+    const simulation = new EyeSimulation({ random: () => 0.99 });
+    simulation.follow = false;
+    simulation.energy = energy;
+    simulation.setEmotion(from);
+    for (let i = 0; i < 180; i++) simulation.update(1 / 60);
+    simulation.setEmotion(to);
+    return Array.from({ length: 90 }, () => simulation.update(1 / 60).bounce);
+  }
+  const surprised = popFrames('idle', 'surprised');
+  const firstSurprise = surprised.find(value => Math.abs(value) > 0.002);
+  assert.ok(firstSurprise < 0, 'surprise stretches taller first');
+  assert.ok(Math.min(...surprised) < -0.012, 'the pop is visible');
+  const focused = popFrames('idle', 'focused');
+  assert.ok(focused.find(value => Math.abs(value) > 0.002) > 0, 'focus settles in with a squash');
+  assert.ok(Math.abs(surprised.at(-1)) < 0.0005, 'the pop has settled within 1.5 seconds');
+
+  const simulation = new EyeSimulation({ random: () => 0.99 });
+  simulation.follow = false;
+  simulation.energy = 1;
+  let previous = 0;
+  for (const id of ['surprised', 'happy', 'surprised', 'curious', 'happy', 'surprised']) {
+    simulation.setEmotion(id);
+    for (let i = 0; i < 4; i++) {
+      const bounce = simulation.update(1 / 60).bounce;
+      assert.ok(Math.abs(bounce) <= 0.03);
+      assert.ok(Math.abs(bounce - previous) < 0.012, 'interrupting a pop never snaps the face scale');
+      previous = bounce;
+    }
+  }
+});
+
+test('a cursor that moves again after resting is noticed once, with a small perk', () => {
+  const simulation = new EyeSimulation({ random: () => 0.99 });
+  const kicks = [];
+  for (let i = 0; i < 20 * 60; i++) {
+    const t = i / 60;
+    const x = t < 5 ? Math.sin(t * 2) * 30 : t < 10 ? Math.sin(10) * 30 : t < 14 ? 20 : 21;
+    simulation.setPointer(x, 0, true);
+    const velocity = simulation.pop.velocity;
+    simulation.update(1 / 60);
+    if (simulation.pop.velocity - velocity < -0.05) kicks.push(Math.round(t));
+  }
+  assert.deepEqual(kicks, [0, 10], 'first appearance and a move after five still seconds; no perk for motion or jitter');
+  const reduced = new EyeSimulation({ reducedMotion: true });
+  reduced.setPointer(20, 0, true);
+  reduced.update(1 / 60);
+  assert.equal(reduced.lastFrame.bounce, 0);
+});
+
+test('ambient head lean follows the natural-motion energy', () => {
+  for (let t = 0; t < 40; t += 0.25) {
+    assert.equal(Math.abs(getAmbientLean('idle', t, 0)), 0);
+    assert.ok(Math.abs(getAmbientLean('idle', t, 0.5) - getAmbientLean('idle', t) / 2) < 1e-12);
+  }
 });

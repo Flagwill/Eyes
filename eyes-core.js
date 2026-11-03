@@ -502,7 +502,9 @@ var EyesCore = (function () {
       {leftLift:.55, rightLift:-.72, leftTension:.7, rightTension:-.55,
         asymmetry:.006, tilt:-.0022}],
     happy: [
-      {bend:6.5, lift:-3.5, spacing:-1.3},
+      // A small head tilt as the smile deepens; roll only reaches the face
+      // matrix, never the authored lid shapes.
+      {bend:6.5, lift:-3.5, spacing:-1.3, tilt:.018},
       {bend:3.5, leftLift:-1.8},
       {rightLift:-2.5}],
     curious: [
@@ -594,11 +596,34 @@ var EyesCore = (function () {
     score.entry.propC = -.5;
   }
 
+  // Acting beats as [start, attack, hold, release]. Idle breathing and the
+  // layered sleepy droops are shaped separately in getActingCues.
+  var EMOTION_TIMING = {
+    happy: [[.9,.38,.65,1.2],[6.2,.45,.35,1.25],[6.35,.45,.35,1.25]],
+    curious: [[1.1,.32,.75,1.35],[1.32,.45,.7,1.4],[5.8,.5,1,1.3]],
+    thinking: [[2.4,.65,.7,1.2],[8.4,.42,.45,1.6],[11.4,.34,.35,.85]],
+    focused: [[4.6,.8,.4,1.5],[12.4,.45,.8,.9],[16,.5,.35,.9]],
+    surprised: [[3.6,.28,.42,1.45],[5.4,.75,.65,1.25],[10.2,.22,.4,.9]],
+    confused: [[1.5,.42,.9,1.1],[1.75,.55,.65,1.2],[7,.5,.7,1.4]],
+  };
+  var ACTIVITY_TIMING = [[1.1,.4,.65,.95],[3.4,.45,.6,1.1],[6.6,.5,.55,1.2]];
+
+  function getCueTiming(emotion) {
+    var score = ACTIVITY_SCORES[emotion];
+    return score ? score.timing || ACTIVITY_TIMING : EMOTION_TIMING[emotion];
+  }
+
+  // Eyes lead the lids: a glance leaves with its acting beat but travels in
+  // well under half the time, holds, and starts home as the lids begin to
+  // release. Quick darts between held targets read as alert, not drifting.
+  function dartBeat(time, start, attack, hold, release) {
+    var travel = Math.max(0.12, attack * 0.42);
+    return beat(time, start, travel, hold + attack - travel,
+      Math.max(0.24, release * 0.42));
+  }
+
   function getActingCues(emotion, time) {
     var t = time % getPerformanceDuration(emotion);
-    var score = ACTIVITY_SCORES[emotion];
-    if (score) return (score.timing || [[1.1,.4,.65,.95],[3.4,.45,.6,1.1],[6.6,.5,.55,1.2]])
-      .map(function(cue) { return beat(t,cue[0],cue[1],cue[2],cue[3]); });
     if (emotion === 'idle') {
       // Three calm breaths per idle cycle (about 5.8 seconds each). A tiny
       // phase bend makes the inhale a little quicker than the release, while
@@ -610,22 +635,22 @@ var EyesCore = (function () {
       var transition = 4 * breath * (1 - breath);
       return [breath * .86, (1 - breath) * .86, transition * .14];
     }
-    if (emotion === 'happy') return [beat(t,.9,.38,.65,1.2),
-      beat(t,6.2,.45,.35,1.25),beat(t,6.35,.45,.35,1.25)];
-    if (emotion === 'curious') return [beat(t,1.1,.32,.75,1.35),
-      beat(t,1.32,.45,.7,1.4),beat(t,5.8,.5,1,1.3)];
-    if (emotion === 'thinking') return [beat(t,2.4,.65,.7,1.2),
-      beat(t,8.4,.42,.45,1.6),beat(t,11.4,.34,.35,.85)];
-    if (emotion === 'focused') return [beat(t,4.6,.8,.4,1.5),
-      beat(t,12.4,.45,.8,.9),beat(t,16,.5,.35,.9)];
-    if (emotion === 'surprised') return [beat(t,3.6,.28,.42,1.45),
-      beat(t,5.4,.75,.65,1.25),beat(t,10.2,.22,.4,.9)];
     if (emotion === 'sleepy') return [
       beat(t,3.3,2.2,.65,.7)+beat(t,9.8,1.8,.4,.85)*.7,
       beat(t,3.55,2.2,.65,.7)+beat(t,10.05,1.8,.4,.85)*.7,
       beat(t,13.3,.25,.35,.65)];
-    return [beat(t,1.5,.42,.9,1.1),beat(t,1.75,.55,.65,1.2),
-      beat(t,7,.5,.7,1.4)];
+    return getCueTiming(emotion).map(function (cue) {
+      return beat(t, cue[0], cue[1], cue[2], cue[3]);
+    });
+  }
+
+  // The same beats for the eyes alone. Drowsy eyes keep the slow lid timing.
+  function getGazeCues(emotion, time) {
+    if (emotion === 'sleepy') return getActingCues(emotion, time);
+    var t = time % getPerformanceDuration(emotion);
+    return getCueTiming(emotion).map(function (cue) {
+      return dartBeat(t, cue[0], cue[1], cue[2], cue[3]);
+    });
   }
 
   function getRestingMotion(emotion, time, cues) {
@@ -689,23 +714,48 @@ var EyesCore = (function () {
       : 1 - ease((elapsed - 0.12) / 0.56);
   }
 
+  // Idle keeps one quiet rhythm but varies where it looks, so a long session
+  // does not replay the same loop. Each phrase is [x, y, head roll]; shift
+  // nudges the first two glance onsets. Phrase 0 is the original right-up /
+  // left-down pair, and every phrase is back at rest before its cycle ends.
+  var IDLE_GLANCES = [
+    {shift:[0,0], first:[6.2,-1.4,0], second:[-4.4,1.1,0], settle:[1.4,-.7,0]},
+    {shift:[.7,-.5], first:[-5.8,-1.8,-.012], second:[4.6,1.2,0], settle:[-1.1,-.4,0]},
+    {shift:[-.4,.6], first:[1.6,-3.4,.014], second:[-5,.9,0], settle:[1.2,-.3,0]},
+    {shift:[1,.2], first:[5,1.6,0], second:[-5.4,-1.5,-.01], settle:[.9,-.6,0]},
+  ];
+  var IDLE_GLANCE_ORDER = [0,2,1,3,1,0,3,2];
+
+  function getIdleGlance(time) {
+    var duration = getPerformanceDuration('idle');
+    var cycle = Math.floor(Math.max(0, time) / duration);
+    var phrase = IDLE_GLANCES[IDLE_GLANCE_ORDER[cycle % IDLE_GLANCE_ORDER.length]];
+    var t = time % duration;
+    var weights = [dartBeat(t, 3.8 + phrase.shift[0], .32, 1.65, .95),
+      dartBeat(t, 10.9 + phrase.shift[1], .38, 1.1, 1),
+      dartBeat(t, 14.7, .6, .6, .9)];
+    var targets = [phrase.first, phrase.second, phrase.settle], result = {x:0, y:0, roll:0};
+    for (var i = 0; i < 3; i++) {
+      result.x += targets[i][0] * weights[i];
+      result.y += targets[i][1] * weights[i];
+      result.roll += targets[i][2] * weights[i];
+    }
+    return result;
+  }
+
   // A glance has a held target and a reason to return. Pointer attention still
   // takes priority, so these phrases never fight a real user's cursor.
-  function getAmbientGaze(emotion, time, cues) {
-    cues = cues || getActingCues(emotion, time);
+  function getAmbientGaze(emotion, time) {
+    if (emotion === 'idle') {
+      var glance = getIdleGlance(time);
+      return {x:glance.x, y:glance.y};
+    }
+    var cues = getGazeCues(emotion, time);
     var a=cues[0], b=cues[1], c=cues[2];
     if (ACTIVITY_SCORES[emotion]) {
       var targets=ACTIVITY_SCORES[emotion].gaze, gaze={x:0,y:0};
       for (var i=0;i<3;i++) { gaze.x+=targets[i][0]*cues[i]; gaze.y+=targets[i][1]*cues[i]; }
       return gaze;
-    }
-    if (emotion === 'idle') {
-      var t=time%getPerformanceDuration('idle');
-      var right=beat(t,3.8,.32,1.65,.95);
-      var left=beat(t,10.9,.38,1.1,1);
-      var settle=beat(t,14.7,.6,.6,.9);
-      return {x:right*6.2-left*4.4+settle*1.4,
-        y:-right*1.4+left*1.1-settle*.7};
     }
     if (!a && !b && !c) return {x:0,y:0};
     if (emotion === 'happy') return {x:b*1.8,y:-a*1.2};
@@ -715,6 +765,27 @@ var EyesCore = (function () {
     if (emotion === 'surprised') return {x:c*3.5,y:-a*.9};
     if (emotion === 'sleepy') return {x:0,y:(a+b)*1.1-c*1.6};
     return {x:-a*3.8+c*4.3,y:-a*.8+c*.6};
+  }
+
+  // Ambient glances lean the head as a cursor glance does (see
+  // getAttentionPose); some idle phrases add a small head cock.
+  // Scaled by energy like every other natural motion.
+  function getAmbientLean(emotion, time, energy) {
+    energy = energy === undefined ? 1 : energy;
+    var lean = Math.max(-1, Math.min(1, getAmbientGaze(emotion, time).x * energy / 40)) * 0.025;
+    return emotion === 'idle' ? lean + getIdleGlance(time).roll * energy : lean;
+  }
+
+  // Signed squash and stretch when the mood changes: negative stretches
+  // first (perks up), positive squashes first (settles in). Activities pop
+  // more gently than emotions, because the harness reports them often.
+  var POP_GAINS = {idle:-.45, happy:-1.3, curious:-.9, thinking:.5, focused:.6,
+    surprised:-1.7, sleepy:.35, confused:.8};
+  var POP_PERIOD = 0.36, POP_DECAY = 6, POP_SCALE = 0.02;
+
+  function getPopGain(id) {
+    if (POP_GAINS[id] !== undefined) return POP_GAINS[id];
+    return id === 'complete' ? POP_GAINS.happy : POP_GAINS[getActivity(id).base] * .6;
   }
 
   var SPRING_REST = 1e-9;
@@ -811,7 +882,15 @@ var EyesCore = (function () {
     this.emotionNaturalAt = 0;
     this.fixationAt = 0;
     this.fixationTarget = { x: 0, y: 0 };
-    this.bounce = 0;
+    // Squash/stretch is a damped oscillator kicked by impulses, so a new pop
+    // during an earlier one adds to it instead of snapping the face scale.
+    var popFrequency = Math.PI * 2 / POP_PERIOD;
+    this.pop = new Spring(0, popFrequency * popFrequency + POP_DECAY * POP_DECAY,
+      POP_DECAY * 2);
+    this.saccadeAnchor = { x: 0, y: 0 };
+    this.saccadeArmed = true;
+    this.pointerRest = { x: 0, y: 0, at: 0 };
+    this.wasPointing = false;
     this.width = 1;
     this.height = 1;
     this.dpr = 1;
@@ -839,8 +918,12 @@ var EyesCore = (function () {
     this.performanceStarts[id] = this.flowTime;
     this.fixationAt = this.flowTime;
     this.attentionAt = this.elapsed;
-    this.bounce = this.reducedMotion ? 0 : 1;
+    if (!this.reducedMotion) kickPop(this, getPopGain(id));
   };
+
+  function kickPop(simulation, gain) {
+    simulation.pop.velocity += gain * POP_SCALE * Math.PI * 2 / POP_PERIOD;
+  }
 
   EyeSimulation.prototype.setActivity = function (id) {
     getActivity(id);
@@ -894,11 +977,11 @@ var EyesCore = (function () {
       ? getActingCues(this.emotion, naturalTime - this.emotionNaturalAt)
       : null;
     var ambient = alive
-      ? getAmbientGaze(this.emotion, naturalTime - this.emotionNaturalAt, currentCues)
+      ? getAmbientGaze(this.emotion, naturalTime - this.emotionNaturalAt)
       : { x: 0, y: 0 };
+    var canBlink = alive && !(this.emotion === 'surprised' && t - this.emotionAt < 0.9);
 
-    if (alive && naturalTime > this.nextBlink &&
-        !(this.emotion === 'surprised' && t - this.emotionAt < 0.9)) {
+    if (canBlink && naturalTime > this.nextBlink) {
       var doubleChance = this.emotion === 'focused' ? 0.06
         : this.emotion === 'confused' ? 0.26 : 0.16;
       this.blink(this.random() < doubleChance);
@@ -917,7 +1000,35 @@ var EyesCore = (function () {
     if (!(directed || pointing)) {
       target.gazeX = this.target.gazeX + gaze.x;
       target.gazeY = this.target.gazeY + gaze.y;
+      if (alive) target.tilt += getAmbientLean(this.emotion,
+        naturalTime - this.emotionNaturalAt, energy);
     }
+    // Large shifts of attention are often covered by a blink. A slow follower
+    // of the intended gaze measures how far it has just jumped: smooth pursuit
+    // never builds enough lead, and each jump makes at most one decision.
+    var anchor = this.saccadeAnchor;
+    var jump = Math.hypot(target.gazeX - anchor.x, target.gazeY - anchor.y);
+    var follow = 1 - Math.exp(-dt / 0.3);
+    anchor.x += (target.gazeX - anchor.x) * follow;
+    anchor.y += (target.gazeY - anchor.y) * follow;
+    if (jump < 5) this.saccadeArmed = true;
+    else if (jump > 15 && this.saccadeArmed) {
+      this.saccadeArmed = false;
+      if (canBlink && t - this.blinkStart > 1.6 &&
+          this.random() < (this.emotion === 'focused' ? 0.35 : 0.55)) {
+        this.blink(this.random() < 0.1);
+      }
+    }
+    // A cursor that moves again after resting is noticed with a small perk.
+    if (pointing) {
+      var resting = this.pointerRest;
+      if (!this.wasPointing ||
+          Math.hypot(this.pointer.x - resting.x, this.pointer.y - resting.y) > 2.5) {
+        if (alive && (!this.wasPointing || t - resting.at > 3)) kickPop(this, -0.55);
+        this.pointerRest = { x: this.pointer.x, y: this.pointer.y, at: t };
+      }
+    }
+    this.wasPointing = pointing;
     var gazeChange = Math.hypot(target.gazeX - this.fixationTarget.x,
       target.gazeY - this.fixationTarget.y);
     if (gazeChange > 1.2) {
@@ -951,7 +1062,9 @@ var EyesCore = (function () {
       var lightParameter = key.indexOf('light') === 0;
       var orientation = key === 'tilt' || key === 'lr' || key === 'rr';
       spring.stiffness = attentionPosition ? 280 : orientation ? 105 : lightParameter ? 125 : 170;
-      spring.damping = reduce ? 34 : attentionPosition ? 33.5
+      // Gaze is slightly underdamped (about 1.5% overshoot): eye darts land
+      // and settle instead of easing in, without visible wobble.
+      spring.damping = reduce ? 34 : attentionPosition ? 27
         : orientation || lightParameter ? 23 : 25.5 - energy * 0.7;
       values[key] = spring.step(target[key], dt);
     }
@@ -968,16 +1081,16 @@ var EyesCore = (function () {
     values.lightGazeY = this.lightGaze.y.step(lightTargetY, dt);
     values.attentionAccent = reduce ? 0 : attentionEnvelope(t - this.attentionAt);
     var faceTarget = getFaceTarget(values);
-    this.face.yaw.damping = reduce ? 30 : 21;
-    this.face.pitch.damping = reduce ? 30 : 20;
+    // The head trails the eyes, then settles with a barely visible follow-
+    // through (under 1% on a full turn). Lower damping would exceed the
+    // 0.04 rad per 60 Hz frame turn rate the face regression allows.
+    this.face.yaw.damping = reduce ? 30 : 16;
+    this.face.pitch.damping = reduce ? 30 : 15;
     var faceYaw = this.face.yaw.step(faceTarget.yaw, dt);
     var facePitch = this.face.pitch.step(faceTarget.pitch, dt);
     if (!reduce) this.lightTime += dt;
-    this.bounce *= Math.exp(-dt * 6);
-    var bounce = reduce
-      ? 0
-      : Math.sin((1 - this.bounce) * Math.PI * 2.6) *
-        this.bounce * 0.012 * (0.3 + energy);
+    var pop = this.pop.step(0, dt);
+    var bounce = reduce ? 0 : Math.max(-0.03, Math.min(0.03, pop * (0.3 + energy)));
 
     var motionWeight = Math.max(0, Math.min(1,
       this.performanceMotion.step(alive ? energy : 0, dt)));
@@ -1407,6 +1520,8 @@ var EyesCore = (function () {
     getLightFragments: getLightFragments,
     attentionEnvelope: attentionEnvelope,
     getAmbientGaze: getAmbientGaze,
+    getAmbientLean: getAmbientLean,
+    getGazeCues: getGazeCues,
     getFixationMotion: getFixationMotion,
     getExpressionAccent: getExpressionAccent,
     getPerformancePose: getPerformancePose,

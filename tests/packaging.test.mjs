@@ -174,6 +174,84 @@ plugin=org.kde.panel
   assert.match(recorded, /org\.eyes\.wallpaper/);
 });
 
+test('Eyes mounts on the primary screen only and hands the running desktop its settings', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-wallpaper-primary-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const config = join(root, 'desktop-config');
+  const state = join(root, 'state/eyes/wallpaper-origin.json');
+  const script = join(root, 'runtime-script.js');
+  const mocks = join(root, 'commands');
+  mkdirSync(mocks);
+  // Two activities share the primary screen 0; screen 1 is a second monitor.
+  writeFileSync(config, `[Containments][3]
+formfactor=0
+lastScreen=1
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.kde.image
+[Containments][3][Wallpaper][org.kde.image][General]
+Image=file:///second-monitor.jpg
+[Containments][4]
+formfactor=0
+lastScreen=0
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.kde.image
+[Containments][4][Wallpaper][org.kde.image][General]
+Image=file:///home/user/.local/share/wallpapers/Package
+[Containments][5]
+formfactor=0
+lastScreen=0
+plugin=org.kde.plasma.folder
+wallpaperplugin=org.kde.image
+[Containments][5][Wallpaper][org.kde.image][General]
+Image=file:///other-activity.jpg
+FillMode=1
+Color=#102030
+`);
+  writeFileSync(join(mocks, 'kwriteconfig6'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  writeFileSync(join(mocks, 'qdbus6'), '#!/bin/sh\nprintf "%s" "$4" > "$EYES_TEST_SCRIPT"\n', { mode: 0o755 });
+  chmodSync(join(mocks, 'kwriteconfig6'), 0o755);
+  chmodSync(join(mocks, 'qdbus6'), 0o755);
+  const result = JSON.parse(execFileSync('python3', [
+    'packaging/configure-plasma-wallpaper.py', '--config', config,
+    '--state-file', state, '--mount', '--activate-runtime', '--json',
+  ], { encoding: 'utf8', env: { ...process.env, PATH: `${mocks}:${process.env.PATH}`,
+    EYES_TEST_SCRIPT: script } }));
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.changedIds.sort(), ['4', '5']);
+  assert.doesNotMatch(result.actions.flat().join(' '), /--group 3\b/, 'a second monitor keeps its wallpaper');
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(state, 'utf8')).containments).sort(), ['4', '5']);
+
+  // Execute the generated Plasma script against desktops that record calls.
+  const { runInNewContext } = await import('node:vm');
+  function desktop(id, plugin, { switches = true } = {}) {
+    const calls = [];
+    let current = plugin, group = [];
+    return { calls, id,
+      get wallpaperPlugin() { return current; },
+      set wallpaperPlugin(value) { calls.push(['plugin', value]); if (switches) current = value; },
+      set currentConfigGroup(value) { group = [...value]; calls.push(['group', group.join('/')]); },
+      writeConfig(key, value) { calls.push(['write', `${group.join('/')}:${key}=${value}`, current]); },
+    };
+  }
+  const desktops = [desktop(3, 'org.kde.image'), desktop(4, 'org.kde.image'),
+    desktop(5, 'org.kde.image', { switches: false })];
+  runInNewContext(readFileSync(script, 'utf8'), { desktops: () => desktops });
+  assert.deepEqual(desktops[0].calls, [], 'the second monitor is not touched at runtime');
+  const primary = desktops[1].calls;
+  assert.deepEqual(primary[0], ['plugin', 'org.eyes.wallpaper'], 'switch before writing settings');
+  assert.deepEqual(primary[1], ['group', 'Wallpaper/org.eyes.wallpaper/General']);
+  const writes = primary.filter(call => call[0] === 'write');
+  assert.deepEqual(writes.map(call => call[1]).sort(), [
+    'Wallpaper/org.eyes.wallpaper/General:Color=#d8d2df',
+    'Wallpaper/org.eyes.wallpaper/General:FillMode=2',
+    'Wallpaper/org.eyes.wallpaper/General:Image=file:///home/user/.local/share/wallpapers/Package',
+  ], 'the live Eyes wallpaper receives the original package URL');
+  assert.ok(writes.every(call => call[2] === 'org.eyes.wallpaper'),
+    'writeConfig also feeds the live wallpaper, so it may only run once Eyes is live');
+  assert.deepEqual(desktops[2].calls, [['plugin', 'org.eyes.wallpaper']],
+    'if Plasma did not switch, nothing may leak into the original wallpaper');
+});
+
 test('wallpaper restore writes the full origin back to config and the live desktop', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'eyes-wallpaper-restore-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

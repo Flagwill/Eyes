@@ -59,6 +59,26 @@ ability to return to the original wallpaper. The implementation remains a
 Plasma wallpaper plugin: it creates no extra window, receives no input, and
 does not alter compositor blur or panel configuration.
 
+### Amendment, 2026-11-03: primary screen and live settings
+
+Eyes is shown on the primary screen only. Mount selects the desktop
+containments on Plasma screen 0, which Plasma always assigns to the
+highest-priority output; one per activity, so all of them are mounted. A
+config without `lastScreen` is treated as single-screen. Other monitors keep
+their wallpaper. Restore still covers every desktop that has a saved origin,
+including secondary desktops mounted by earlier releases.
+
+plasmashell keeps its own copy of the desktop configuration, so values written
+with `kwriteconfig6` are not seen by a wallpaper it creates afterwards. A first
+show after Plasma started therefore created the Eyes wallpaper with an empty
+`Image` and painted only its fallback color. The runtime script now switches
+each target to Eyes and then writes `Image`, `Color` and `FillMode` with the
+scripting `writeConfig`. Order matters: `writeConfig` also pushes each value
+into whichever wallpaper is live at that moment, regardless of the selected
+group, so writing before the switch, or when the switch did not take, would
+leak Eyes values into the original wallpaper. The Eyes `main.xml` declares
+`Color` and `FillMode` so the copied values are read.
+
 ## Consequences
 The original wallpaper returns on hide, completion fade, clean quit, and the
 next startup after a crash. There can be a short plugin-switch delay after the
@@ -75,4 +95,14 @@ panel isolation, user-choice precedence, package color-scheme preservation,
 and legacy recovery. The real-host lifecycle test uses a temporary config,
 state directory, D-Bus session, and wallpaper command mock to verify the
 operation order: startup restore, show mount, hide restore, show mount, quit
-restore.
+restore. A packaging test executes the generated Plasma script against
+recording desktops to check primary-only targets, switch-before-write order and
+no writes when the switch does not take.
+
+Mocks cannot reproduce plasmashell's config copy. The amendment was verified
+in an isolated nested session (virtual KWin with two outputs, private config,
+cache, runtime directory and D-Bus, plus a manually started
+`kactivitymanagerd`): before the fix both screens showed the flat fallback
+color and Plasma logged `Couldn't open "/metadata.json"` once per screen; after
+it only screen 0 switched, showed the frosted original package image with the
+eyes, and the other screen and the original wallpaper settings were unchanged.
