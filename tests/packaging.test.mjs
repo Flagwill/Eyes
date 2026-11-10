@@ -443,10 +443,18 @@ Image=file://${packagePath}
 
   const wallpaperQml = readFileSync(
     'packaging/plasma-wallpaper/org.eyes.wallpaper/contents/ui/main.qml', 'utf8');
+  // The backdrop is resolved like Plasma's own image wallpaper: MediaProxy picks
+  // the light or dark variant, and only day/night wallpapers use the snapshot.
+  assert.match(wallpaperQml, /Wallpaper\.MediaProxy/);
+  assert.match(wallpaperQml, /mediaProxy\.modelImage/);
+  assert.match(wallpaperQml, /BackgroundType\.DayNight/);
   assert.match(wallpaperQml, /Wallpaper\.DayNightWallpaper/);
   assert.match(wallpaperQml, /wallpaperSnapshot\.bottom/);
   assert.match(wallpaperQml, /Wallpaper\.TransientImage/,
-    'package image:// URLs require the Plasma image provider, not Qt Image');
+    'day/night image:// URLs require the Plasma image provider, not Qt Image');
+  // Plasma paints the new wallpaper on a black screen, so the first frame must
+  // already contain the picture: ordinary wallpapers load synchronously.
+  assert.match(wallpaperQml, /id: wallpaperBottomImage[\s\S]*?asynchronous: false/);
 
   const colorConfig = join(root, 'color-config');
   writeFileSync(colorConfig, `[Containments][11]

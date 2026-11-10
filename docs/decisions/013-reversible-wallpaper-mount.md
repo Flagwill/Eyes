@@ -106,3 +106,34 @@ cache, runtime directory and D-Bus, plus a manually started
 color and Plasma logged `Couldn't open "/metadata.json"` once per screen; after
 it only screen 0 switched, showed the frosted original package image with the
 eyes, and the other screen and the original wallpaper settings were unchanged.
+
+### Amendment, 2026-11-10: no flash when the plugin is swapped
+
+Switching `wallpaperPlugin` destroys the old wallpaper and creates the new one;
+nothing is painted behind a wallpaper, so any frame before the new wallpaper has
+its picture is black (measured in an isolated nested Plasma session; a
+transparent, `loading` Eyes wallpaper also left the screen black). Two defects
+made showing Eyes flash:
+
+- The first frames of a new Eyes instance showed the fallback `Color`, because
+  the backdrop image loaded asynchronously (about 50 ms, three to four frames).
+- The backdrop was resolved with `DayNightWallpaper`, whose `bottom` was the
+  light variant (`...&darkMode=0`) while Plasma's own image wallpaper, which
+  resolves through `MediaProxy`, showed `images_dark`. The picture changed
+  brightness at the swap, and again on restore.
+
+`main.qml` now resolves the backdrop with `Wallpaper.MediaProxy` exactly as
+Plasma does and loads it synchronously (`Image { asynchronous: false }`), so the
+first frame already contains the same picture. Only `BackgroundType.DayNight`
+wallpapers keep `DayNightWallpaper` with `TransientImage`, because their
+`image://` URLs need Plasma's image provider. Verified in the nested session: the
+instance is created with the image `Ready`, frame 1 included, and the screenshots
+before and after mounting show the same variant.
+
+Not fixed by this: on restore, Plasma creates its own image wallpaper and paints
+it only after its asynchronous load, leaving one black frame (seen in the same
+session, about one capture interval). That is Plasma's behaviour, not Eyes'.
+Removing it would require not swapping on every hide, for example by keeping
+Eyes mounted (showing the plain wallpaper) for a grace period after hiding and
+restoring only after a long idle. That conflicts with restoring the original
+wallpaper as soon as Eyes is hidden, so it needs an explicit product decision.

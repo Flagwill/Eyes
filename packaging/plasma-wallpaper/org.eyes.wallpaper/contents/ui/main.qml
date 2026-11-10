@@ -18,15 +18,22 @@ WallpaperItem {
     readonly property string wallpaperSource: String(
         root.configuration.Image || ""
     )
+    // The backdrop is resolved exactly like Plasma's own image wallpaper
+    // (MediaProxy picks the light or dark variant and the resolution for this
+    // output), so the picture under the frost is the picture it replaced.
+    // Only day/night wallpapers blend two images through DayNightWallpaper.
+    readonly property bool wallpaperDayNight:
+        mediaProxy.backgroundType === Wallpaper.BackgroundType.DayNight
     readonly property var wallpaperSnapshot: wallpaperResolver.snapshot
-    readonly property url wallpaperBottomSource: String(
-        wallpaperSnapshot ? wallpaperSnapshot.bottom : ""
-    )
-    readonly property url wallpaperTopSource: String(
-        wallpaperSnapshot ? wallpaperSnapshot.top : ""
-    )
+    readonly property url wallpaperBottomSource: wallpaperDayNight
+        ? String(wallpaperSnapshot ? wallpaperSnapshot.bottom : "")
+        : mediaProxy.modelImage
+    readonly property url wallpaperTopSource: wallpaperDayNight
+        ? String(wallpaperSnapshot ? wallpaperSnapshot.top : "")
+        : ""
     readonly property real wallpaperBlendFactor: {
-        var value = wallpaperSnapshot ? Number(wallpaperSnapshot.blendFactor) : 0;
+        var value = wallpaperDayNight && wallpaperSnapshot
+            ? Number(wallpaperSnapshot.blendFactor) : 0;
         return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
     }
     onWallpaperBlendFactorChanged: Qt.callLater(frostCache.scheduleUpdate)
@@ -52,12 +59,14 @@ WallpaperItem {
     // The sequence waits, eyes shut, until the frosted glass has been rendered
     // once: that first blur is the heaviest frame and must not hit mid-motion.
     property bool frostSettled: false
+    readonly property bool backdropLoading: wallpaperDayNight
+        ? wallpaperDayNightBottom.status === Wallpaper.TransientImage.Loading
+        : wallpaperBottomImage.status === Image.Loading
     onShownChanged: {
         if (!shown) return;
         frostSettled = false;
         simulation.wake();
-        if (wallpaperBottomImage.status !== Wallpaper.TransientImage.Loading)
-            frostSettleTimer.restart();
+        if (!backdropLoading) frostSettleTimer.restart();
     }
 
     Timer {
@@ -78,19 +87,44 @@ WallpaperItem {
         color: root.wallpaperColor
     }
 
+    Wallpaper.MediaProxy {
+        id: mediaProxy
+        source: root.wallpaperSource
+        targetSize: Qt.size(
+            Math.max(1, Math.round(Screen.width * Screen.devicePixelRatio)),
+            Math.max(1, Math.round(Screen.height * Screen.devicePixelRatio)))
+    }
+
     Wallpaper.DayNightWallpaper {
         id: wallpaperResolver
-        source: root.wallpaperSource
+        source: root.wallpaperDayNight ? root.wallpaperSource : ""
     }
 
     Item {
         id: wallpaperSurface
         anchors.fill: parent
 
-        Wallpaper.TransientImage {
+        // Ordinary wallpapers: a file URL from MediaProxy, loaded synchronously
+        // on purpose. Plasma destroys the previous wallpaper before painting
+        // this one and the screen behind it is black, so a picture that arrives
+        // a few frames late shows up as a flash of fallback color.
+        Image {
             id: wallpaperBottomImage
             anchors.fill: parent
-            source: root.wallpaperBottomSource
+            visible: !root.wallpaperDayNight
+            source: root.wallpaperDayNight ? "" : root.wallpaperBottomSource
+            fillMode: root.wallpaperFillMode
+            asynchronous: false
+            autoTransform: true
+            cache: false
+        }
+
+        // Day/night wallpapers: image:// URLs need Plasma's image provider.
+        Wallpaper.TransientImage {
+            id: wallpaperDayNightBottom
+            anchors.fill: parent
+            visible: root.wallpaperDayNight
+            source: root.wallpaperDayNight ? root.wallpaperBottomSource : ""
             fillMode: root.wallpaperFillMode
         }
 
@@ -137,10 +171,19 @@ WallpaperItem {
     Connections {
         target: wallpaperBottomImage
         function onStatusChanged() {
-            if (wallpaperBottomImage.status === Wallpaper.TransientImage.Ready)
+            if (wallpaperBottomImage.status === Image.Ready)
                 frostCache.scheduleUpdate();
-            if (root.shown && !root.frostSettled &&
-                wallpaperBottomImage.status !== Wallpaper.TransientImage.Loading)
+            if (root.shown && !root.frostSettled && !root.backdropLoading)
+                frostSettleTimer.restart();
+        }
+    }
+
+    Connections {
+        target: wallpaperDayNightBottom
+        function onStatusChanged() {
+            if (wallpaperDayNightBottom.status === Wallpaper.TransientImage.Ready)
+                frostCache.scheduleUpdate();
+            if (root.shown && !root.frostSettled && !root.backdropLoading)
                 frostSettleTimer.restart();
         }
     }
