@@ -919,6 +919,47 @@ var EyesCore = (function () {
     );
   }
 
+  // Waking from hidden, in seconds of a dedicated wake clock. The lids rise in
+  // four unhurried movements - a stir, a lazy sag back, the heavy lift to a slit,
+  // then a pause and the final opening - each a quintic rise that starts and
+  // ends at rest, so velocity and acceleration stay continuous and nothing
+  // kicks. A soft over-wide stare, a slight breath toward the viewer, a glance
+  // to orient and one settling blink follow. Gaze, head and tilt sink with the
+  // closed lids and rise as they open. The wake clock only starts after the
+  // scene has drawn smooth frames and never advances more than maxStep per
+  // frame, so a stalled frame freezes the motion instead of skipping ahead.
+  var WAKE = {
+    // [start, duration, from, to]; every row begins where the last one ended.
+    lids: [[0.20, 0.40, 1, 0.82], [0.60, 0.35, 0.82, 0.90],
+      [0.95, 0.75, 0.90, 0.52], [1.90, 0.55, 0.52, 0]],
+    arrive: 2.05, refocus: 3.0, end: 3.4,
+    widen: 0.08, asymmetry: 0.06, breath: 0.01,
+    droopGaze: 14, droopSide: -5, droopNod: 0.05, droopTilt: 0.016, glanceX: 8,
+    warmFrames: 8, smoothFrame: 0.05, maxStep: 0.04, maxWait: 1.5,
+  };
+
+  function smootherstep(value) {
+    var t = Math.max(0, Math.min(1, value));
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  function getWakeEnvelope(age) {
+    var closed = 1;
+    for (var lid of WAKE.lids) {
+      if (age < lid[0]) break;
+      closed = lid[2] + (lid[3] - lid[2]) * smootherstep((age - lid[0]) / lid[1]);
+    }
+    return {
+      closed: closed,
+      widen: beat(age, WAKE.arrive, 0.3, 0.1, 0.6) * WAKE.widen,
+      glance: beat(age, 2.4, 0.3, 0.2, 0.4),
+      lean: beat(age, 2.1, 0.4, 0.1, 0.7),
+      // Brows and symbols fade in gently as the final opening begins.
+      accents: smootherstep((age - WAKE.lids[3][0]) / 0.8),
+      light: smootherstep(1 - closed),
+    };
+  }
+
   function EyeSimulation(options) {
     options = options || {};
     this.emotion = 'idle';
@@ -951,6 +992,14 @@ var EyesCore = (function () {
     this.gaze = { x: 0, y: 0, until: 0 };
     this.pointer = { x: 0, y: 0, active: false, until: 0 };
     this.nextBlink = 2.5;
+    this.wakeState = 'idle';
+    this.wakeClock = 0;
+    this.wakeWarm = 0;
+    this.wakeWaitAt = 0;
+    this.wakeRefocused = true;
+    // Set by the host while it is still loading the scene or settling the
+    // glass; the sequence waits for it so no start-up stall lands mid-motion.
+    this.wakeHold = false;
     this.blinkStart = -10;
     this.doubleBlink = false;
     this.blinkDuration = 1;
@@ -1030,6 +1079,31 @@ var EyesCore = (function () {
     this.nextBlink = this.flowTime + style[0] + this.random() * 2.6;
   };
 
+  // Plays the opening sequence from closed lids. Called when the face goes from
+  // hidden to shown; reduced motion keeps the plain fade instead. The face
+  // starts in the sleeping posture (set while it is still hidden) and waits,
+  // eyes shut, for smooth frames before the wake clock starts.
+  EyeSimulation.prototype.wake = function () {
+    if (this.reducedMotion) return;
+    this.wakeState = 'warming';
+    this.wakeClock = 0;
+    this.wakeWarm = 0;
+    this.wakeWaitAt = this.elapsed;
+    this.wakeRefocused = false;
+    this.blinkStart = -10;
+    this.nextBlink = this.flowTime + WAKE.end + 2.5;
+    var sleeping = [[this.springs.gazeY, WAKE.droopGaze], [this.springs.gazeX, WAKE.droopSide],
+      [this.springs.tilt, WAKE.droopTilt], [this.lightGaze.y, WAKE.droopGaze],
+      [this.lightGaze.x, WAKE.droopSide],
+      // The head follows the lowered gaze (getFaceTarget) as well as nodding.
+      [this.face.pitch, WAKE.droopGaze / 28 * 0.24 + WAKE.droopNod],
+      [this.face.yaw, WAKE.droopSide / 40 * 0.34]];
+    for (var item of sleeping) {
+      item[0].value += item[1];
+      item[0].velocity = 0;
+    }
+  };
+
   EyeSimulation.prototype.look = function (x, y, duration) {
     duration = duration === undefined ? 1.8 : duration;
     if (![x, y, duration].every(Number.isFinite)) {
@@ -1060,13 +1134,44 @@ var EyesCore = (function () {
     var energy = reduce ? 0 : this.energy;
     if (alive) this.flowTime += dt;
     var naturalTime = this.flowTime;
+    // Wake: wait for smooth frames, then run on a clock that cannot jump.
+    if (this.wakeState !== 'idle' && reduce) this.wakeState = 'idle';
+    if (this.wakeState === 'warming') {
+      if (dt > WAKE.smoothFrame) this.wakeWarm = 0;
+      else if (dt > 0 && !this.wakeHold) this.wakeWarm++;
+      if (this.wakeWarm >= WAKE.warmFrames || t - this.wakeWaitAt > WAKE.maxWait) {
+        this.wakeState = 'playing';
+      }
+    } else if (this.wakeState === 'playing') {
+      this.wakeClock += Math.min(dt, WAKE.maxStep);
+      if (this.wakeClock >= WAKE.end) this.wakeState = 'idle';
+    }
+    var waking = this.wakeState !== 'idle';
+    var wake = waking ? getWakeEnvelope(this.wakeClock)
+      : {closed: 0, widen: 0, glance: 0, lean: 0, accents: 1, light: 1};
+    if (waking && this.wakeClock < WAKE.arrive) {
+      // Until the eyes are open, the mood's performance holds at its first beat
+      // instead of playing, popping or blinking behind closed lids.
+      this.emotionAt = t;
+      this.emotionNaturalAt = naturalTime;
+      this.fixationAt = naturalTime;
+      this.attentionAt = t;
+      this.actingClock = 0;
+      this.pop.value = 0;
+      this.pop.velocity = 0;
+    }
+    var emotionAge = t - this.emotionAt;
+    if (waking && !this.wakeRefocused && this.wakeClock >= WAKE.refocus) {
+      this.wakeRefocused = true;
+      this.blink(false);
+    }
     var currentCues = alive
       ? getActingCues(this.emotion, naturalTime - this.emotionNaturalAt)
       : null;
     var ambient = alive
       ? getAmbientGaze(this.emotion, naturalTime - this.emotionNaturalAt)
       : { x: 0, y: 0 };
-    var canBlink = alive && !(this.emotion === 'surprised' && t - this.emotionAt < 0.9);
+    var canBlink = alive && !waking && !(this.emotion === 'surprised' && t - this.emotionAt < 0.9);
 
     // Beat-synchronised hops and blinks. Performance time only advances with
     // natural motion, so pausing never fires a missed cue on resume. Acted
@@ -1079,7 +1184,7 @@ var EyesCore = (function () {
       for (var cue of events) {
         if (!cueCrossed(this.actingClock, performanceTime, cue.at, cycle, cue.once)) continue;
         if (cue.pop) kickPop(this, cue.pop);
-        if (cue.blink && t - this.blinkStart > 0.8 &&
+        if (cue.blink && !waking && t - this.blinkStart > 0.8 &&
             (cue.blink >= 1 || this.random() < cue.blink)) this.blink(cue.double);
       }
     }
@@ -1138,19 +1243,33 @@ var EyesCore = (function () {
       this.fixationTarget = { x: target.gazeX, y: target.gazeY };
     }
     // Keep the main reflection anchored to the intended target, not micro acting.
+    if (waking) {
+      target.gazeY += WAKE.droopGaze * wake.closed;
+      target.gazeX += WAKE.droopSide * wake.closed +
+        (directed || pointing ? 0 : WAKE.glanceX * wake.glance);
+      target.tilt += WAKE.droopTilt * wake.closed;
+    }
     var lightTargetX = target.gazeX;
     var lightTargetY = target.gazeY;
     if (alive) {
       var fixation = getFixationMotion(this.emotion, naturalTime - this.fixationAt);
       target.gazeX += fixation.x * energy;
       target.gazeY += fixation.y * energy;
-      var accent = getExpressionAccent(this.emotion, t - this.emotionAt);
+      var accent = getExpressionAccent(this.emotion, emotionAge);
       var rest = getRestingMotion(
         this.emotion, naturalTime - this.emotionNaturalAt, currentCues);
       var motion = motionPose();
       for (var channel in motion) motion[channel] = accent[channel] + rest[channel];
       motion.open -= fixation.lid;
       applyMotion(target, motion, energy);
+    }
+    if (waking) {
+      // One eye leads a little through the final opening, then both widen softly.
+      var openness = 1 - wake.closed;
+      var stare = motionPose();
+      stare.open = wake.widen;
+      stare.asymmetry = WAKE.asymmetry * 4 * openness * (1 - openness);
+      applyMotion(target, stare, 1);
     }
 
     target.tilt = Math.max(-0.029, Math.min(0.029, target.tilt));
@@ -1189,12 +1308,12 @@ var EyesCore = (function () {
     this.face.yaw.damping = reduce ? 30 : 16;
     this.face.pitch.damping = reduce ? 30 : 15;
     var body = alive ? getBodyActing(this.emotion, performanceTime,
-      t - this.emotionAt, currentCues) : {lean: 0, nod: 0};
+      emotionAge, currentCues) : {lean: 0, nod: 0};
     var faceYaw = this.face.yaw.step(faceTarget.yaw, dt);
     var facePitch = this.face.pitch.step(Math.max(-0.28, Math.min(0.28,
-      faceTarget.pitch + body.nod * energy)), dt);
+      faceTarget.pitch + body.nod * energy + WAKE.droopNod * wake.closed)), dt);
     var faceLean = this.face.lean.step(Math.max(-LEAN_LIMIT, Math.min(LEAN_LIMIT,
-      body.lean * energy)), dt);
+      body.lean * energy + WAKE.breath * wake.lean)), dt);
     if (!reduce) this.lightTime += dt;
     var pop = this.pop.step(0, dt);
     var bounce = reduce ? 0 : Math.max(-0.03, Math.min(0.03, pop * (0.3 + energy)));
@@ -1216,7 +1335,7 @@ var EyesCore = (function () {
     for (var e = 0; e < EXPRESSIONS.length; ++e) {
       var emotionId = EXPRESSIONS[e].id;
       var entering = Math.max(0, Math.min(1, this.entryWeights[emotionId].step(
-        alive && emotionId === this.emotion ? entryEnvelope(emotionId, t - this.emotionAt) * energy : 0, dt)));
+        alive && emotionId === this.emotion ? entryEnvelope(emotionId, emotionAge) * energy : 0, dt)));
       if (entering < 0.0000001) entering = 0;
       var gestures=[], gestureSum=0;
       for (var gesture=0; gesture<3; gesture++) {
@@ -1241,10 +1360,12 @@ var EyesCore = (function () {
           accumulated > 0 ? 100 * contribution / accumulated : 0;
       }
     }
-    riveInputs.flow = motionWeight * 100;
-    riveInputs.accents = this.accents ? 100 : 0;
+    riveInputs.flow = motionWeight * 100 * wake.light;
+    riveInputs.accents = this.accents ? 100 * wake.accents : 0;
     riveInputs.flowphase = (naturalTime % 14) / 14 * 100;
-    riveInputs.blink = 100 * blinkAmount((t - this.blinkStart) / this.blinkDuration, this.doubleBlink);
+    var blinking = Math.max(wake.closed,
+      blinkAmount((t - this.blinkStart) / this.blinkDuration, this.doubleBlink));
+    riveInputs.blink = 100 * blinking;
     riveInputs.lookx = Math.max(-1, Math.min(1, (values.gazeX - this.target.gazeX) / 40));
     riveInputs.looky = Math.max(-1, Math.min(1, (values.gazeY - this.target.gazeY) / 28));
     riveInputs.lightx = Math.max(-1, Math.min(1, (values.lightGazeX - this.target.gazeX) / 40));
@@ -1259,7 +1380,8 @@ var EyesCore = (function () {
       face: {yaw: faceYaw, pitch: facePitch, lean: faceLean,
         matrix: getFaceMatrix(faceYaw, facePitch, values.tilt, 1 + faceLean)},
       riveInputs: riveInputs,
-      blink: blinkAmount((t - this.blinkStart) / this.blinkDuration, this.doubleBlink),
+      blink: blinking,
+      accents: wake.accents,
       breathe: alive ? (Math.sin(naturalTime * 1.15) * 0.0035 +
         Math.sin(naturalTime * 1.93) * 0.0008) * energy : 0,
       bounce: bounce,
@@ -1592,7 +1714,12 @@ var EyesCore = (function () {
       ctx.restore();
       ctx.restore();
     }
-    if (this.accents) drawAccents(ctx, pose);
+    if (this.accents) {
+      ctx.save();
+      ctx.globalAlpha *= frame.accents;
+      drawAccents(ctx, pose);
+      ctx.restore();
+    }
     ctx.restore();
     ctx.restore();
   };
@@ -1640,6 +1767,8 @@ var EyesCore = (function () {
     getActingCues: getActingCues,
     getPerformanceDuration: getPerformanceDuration,
     blinkAmount: blinkAmount,
+    getWakeEnvelope: getWakeEnvelope,
+    WAKE: WAKE,
     drawLight: drawLight,
     drawAccents: drawAccents,
     getAccentStates: getAccentStates,

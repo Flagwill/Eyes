@@ -48,6 +48,24 @@ WallpaperItem {
 
     Component.onCompleted: console.info("Eyes GPU wallpaper loaded", Screen.name)
 
+    // Hidden to shown: the eyes open from closed lids (see getWakeEnvelope).
+    // The sequence waits, eyes shut, until the frosted glass has been rendered
+    // once: that first blur is the heaviest frame and must not hit mid-motion.
+    property bool frostSettled: false
+    onShownChanged: {
+        if (!shown) return;
+        frostSettled = false;
+        simulation.wake();
+        if (wallpaperBottomImage.status !== Wallpaper.TransientImage.Loading)
+            frostSettleTimer.restart();
+    }
+
+    Timer {
+        id: frostSettleTimer
+        interval: 160
+        onTriggered: root.frostSettled = true
+    }
+
     Behavior on reveal {
         NumberAnimation {
             duration: 760
@@ -121,6 +139,9 @@ WallpaperItem {
         function onStatusChanged() {
             if (wallpaperBottomImage.status === Wallpaper.TransientImage.Ready)
                 frostCache.scheduleUpdate();
+            if (root.shown && !root.frostSettled &&
+                wallpaperBottomImage.status !== Wallpaper.TransientImage.Loading)
+                frostSettleTimer.restart();
         }
     }
 
@@ -146,6 +167,7 @@ WallpaperItem {
         opacity: root.reveal
         sourceComponent: RiveEyeScene {
             simulation: root.simulation
+            holdWake: !root.frostSettled
             Component.onCompleted: {
                 root.resizeEngine();
                 advance(0);

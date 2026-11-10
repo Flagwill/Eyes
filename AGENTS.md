@@ -24,6 +24,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - 安装后的桌面版追踪 KDE 全局系统光标；WebUI 只追踪页面内光标。两者必须保留各自作用范围。
 - 光标注意力应同时影响视线、高光、近侧眼形、眼距和轻微倾斜，但幅度受控，不覆盖当前情绪。
 - `complete` 先显示开心状态约 4.5 秒，再自动淡出。只读命令不能取消这个计时器。
+- 从隐藏到显示必须播放苏醒序列：闭眼 → 轻动 → 回落 → 缓慢抬起眼缝 → 停顿 → 舒缓睁开 → 一瞥 → 一次定神眨眼（约 3.4 秒，见 ADR-018）。曲线必须保持速度与加速度连续，禁止冲量、ease-out 起步或停顿后速度突变；序列等场景加载和磨砂层稳定后才开始。它只在共享引擎里由 `wake()` 驱动，复用 `blink` 输入，不改 Rive 素材；桌面在壁纸 `shown` 变真时调用，已显示时换状态不重播，减少动态效果不播放。
 - 用户隐藏必须持久压过智能体活动：`eyes hide`、托盘“隐藏 Eyes”和从显示态触发的托盘切换写入
   `$XDG_STATE_HOME/eyes/user-visibility`，后台可继续接收状态但不得渲染或发布注意力；
   Codex hook 和命令客户端不得自动启动缺失宿主。只有 `eyes show`、托盘“显示双眼”等明确
@@ -85,6 +86,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `packaging/kwin-eyes-cursor/`：将 KWin 全局光标发送到 `org.eyes.Desktop /Cursor`。
 - `docs/MOTION.md`：眼神表演、高光和注意力动作台本。
 - `docs/CODEX.md`：Codex Desktop hooks 映射、信任步骤和限制。
+- `docs/decisions/018-wake-from-closed-lids.md`：显示时从闭眼睁开的苏醒序列、时间轴和触发边界。
 - `docs/decisions/011-user-visibility-intent.md`：用户隐藏/退出高于智能体活动的持久状态约定。
 - `docs/decisions/012-opt-in-application-startup.md`：默认关闭登录自启动与应用菜单入口约定。
 - `docs/decisions/013-reversible-wallpaper-mount.md`：显示时临时挂载、隐藏时恢复原壁纸的状态文件与迁移约定。

@@ -109,6 +109,10 @@ export class Eyes {
     this.engine.blink(double);
   }
 
+  wake() {
+    this.engine.wake();
+  }
+
   look(x, y, duration = 1.8) {
     this.engine.look(x, y, duration);
   }

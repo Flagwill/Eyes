@@ -29,6 +29,13 @@ document.querySelectorAll('[data-emotion]').forEach((button) => {
     button.querySelector('canvas').getContext('2d')));
 });
 
+// Hidden to shown: the eyes open from closed lids instead of simply fading in.
+function revealStage() {
+  if (!stage.classList.contains('completion-hidden')) return;
+  stage.classList.remove('completion-hidden');
+  eyes.wake();
+}
+
 function selectEmotion(id, { interrupt = true, description } = {}) {
   const emotion = EXPRESSIONS.find((item) => item.id === id);
   if (!emotion) throw new RangeError(`Unknown expression: ${id}`);
@@ -37,7 +44,7 @@ function selectEmotion(id, { interrupt = true, description } = {}) {
   temporaryToken++;
   petReturnEmotion = null;
   eyes.setEmotion(id);
-  stage.classList.remove('completion-hidden');
+  revealStage();
   $('#emotion-name').textContent = emotion.name;
   $('#emotion-description').textContent = description || emotion.description;
   document.querySelectorAll('[data-emotion]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.emotion === id)));
@@ -244,5 +251,5 @@ window.eyes = Object.freeze({
     temporaryToken++;
     stage.classList.add('completion-hidden');
   },
-  show: () => stage.classList.remove('completion-hidden'),
+  show: revealStage,
 });

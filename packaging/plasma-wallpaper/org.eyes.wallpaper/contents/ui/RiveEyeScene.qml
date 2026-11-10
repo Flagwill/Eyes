@@ -7,6 +7,8 @@ import "eyes-core.js" as EyeCore
 Item {
     id: scene
     required property var simulation
+    // The host holds the opening sequence while it is still settling the glass.
+    property bool holdWake: false
     property var frame: null
     readonly property var pose: frame ? frame.pose : EyeCore.EyesCore.getPose("idle")
     readonly property var layout: EyeCore.EyesCore.getLayout(width, height, true)
@@ -29,6 +31,9 @@ Item {
     }
 
     function advance(delta) {
+        // Eyes open only once the vector scene is loaded, so a load stall never
+        // lands in the middle of the opening.
+        simulation.wakeHold = holdWake || !loaded;
         frame = simulation.update(Math.min(delta, 0.064));
     }
 
