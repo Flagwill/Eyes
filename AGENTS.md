@@ -122,7 +122,7 @@ eyes quit
 - Plasma 的 QQmlEngine 会缓存旧组件，切换壁纸类型不保证加载新代码。安装器比较场景、共享模型、`.riv` 和 native plugin，变化时刷新 `plasma-plasmashell.service`；验证须在实际 Plasma 日志看到 `Eyes GPU wallpaper loaded` 和 `Eyes Rive wallpaper loaded`。
 - 壁纸只在 Eyes 显示期间临时挂载：启动先恢复崩溃或旧版本残留，`shownChanged=true` 才保存原插件与完整壁纸配置并切到 Eyes，隐藏或 `complete` 淡出后恢复，退出前阻塞式恢复。状态文件默认 `$XDG_STATE_HOME/eyes/wallpaper-origin.json`（`0600`），只记录 formfactor=0 的桌面 containment，不记录或修改面板。安装器不得主动挂载 Eyes；用户显示期间主动换壁纸时新选择优先。壁纸包 URL 必须原样保留，不能在配置文件里冻结为亮色图片。磨砂层下的背景必须与 Plasma 自带壁纸解析出同一张图：`main.qml` 用 `Wallpaper.MediaProxy`（`modelImage`）按当前配色方案选 `images` / `images_dark` 和分辨率，只有 `BackgroundType.DayNight` 的动态壁纸才走 `DayNightWallpaper` + `TransientImage`。普通壁纸的背景必须用 `asynchronous: false` 的 `Image` 同步加载：Plasma 先销毁旧壁纸再画新壁纸，其下是黑底，图片晚几帧到达就是一次闪烁；不要换回异步加载，也不要再用 `DayNightWallpaper` 解析普通壁纸（它与 Plasma 的选择会不一致）。参见 ADR-013 修订。
 - 挂载和恢复必须同时更新配置文件与运行中的 containment。`kwriteconfig6 --notify` 只保存键值，不能可靠切换已运行的插件，因此成功后还要通过 PlasmaShell `evaluateScript` 按运行中的 `desktop.id` 应用；状态只能在文件和运行时都成功后清除。状态桥客户端须在 URL 就绪后激活，并在 `Open` 后主动请求快照。
-- plasmashell 持有自己的配置副本，`kwriteconfig6` 写入的 Eyes `Image/Color/FillMode` 不会被它新建的壁纸读到（会只剩浅色兜底底色）。挂载脚本必须在同一段 `evaluateScript` 里先切换到 Eyes，再用 `writeConfig` 写入这些值；`writeConfig` 会把值推给当时正在显示的壁纸、不看所选配置组，所以绝不能在切换前或切换未生效时写。mock 测试复现不了这一点，修改挂载流程后须在隔离的嵌套 Plasma 会话中验证。
+- plasmashell 持有自己的配置副本，`kwriteconfig6` 写入的 Eyes `Image/Color/FillMode` 不会被它新建的壁纸读到（会只剩浅色兜底底色）。挂载脚本必须在同一段 `evaluateScript` 里先切换到 Eyes，再用 `writeConfig` 写入这些值；`writeConfig` 会把值推给当时正在显示的壁纸、不看所选配置组，所以绝不能在切换前或切换未生效时写。mock 测试复现不了这一点，修改挂载流程后须在隔离的嵌套 Plasma 会话中验证，用 `npm run desktop:wallpaper:rig`（见 `tools/wallpaper-rig.sh`）。
 - 可临时设置壁纸配置 `DebugPerformance=true`，日志每 5 秒报告 `EYES_PERF GPU`。不要只凭独立测试窗口的帧率宣布桌面已修复。完成测量后关闭日志。
 - 常驻默认 `AnimationFps=60`（20–60）。`AnimationClock.qml` 仍用 FrameAnimation 累计真实帧间隔，隐藏后停钟且不追补隐藏时间。`cmake/RiveScheduling.cmake` 让 Rive 仅随模型更新，在当前帧 prepare 阶段绘制并缓存向量和 SMAA；不要恢复原生自刷新或每帧反向输入轮询。淡出后 Loader 卸载眼睛场景以释放渲染目标；宿主继续待命。见 ADR-008。
 - WebSocket 桥仅监听 `127.0.0.1:38271`。断开后必须隐藏画面，避免后台停止后仍残留最后一帧眼睛。
@@ -170,6 +170,16 @@ GPU 改动再运行 `npm run desktop:test`。光标桥修改时先停止桌面�
 涉及输出尺寸或像素密度时，运行 `npm run desktop:hidpi:test`。它使用实际 X11 / XWayland 窗口；Qt 6.12 的离屏高 DPI 截图有独立复现的问题，不能据其裁切画面判断 Rive 失败。原生目标尺寸必须包含窗口实际像素比（`Window.devicePixelRatio`，缺失时 `Screen.devicePixelRatio`），并映射回相同逻辑构图。
 
 主桌面不曝光 QML 测试窗口时，使用隔离的虚拟 KWin 运行完整 `tests/qml`，不要用 offscreen 结果替代 GPU 回归。壁纸生命周期使用 `npm run desktop:wallpaper:test`；它和光标/活动测试一样需要先停止真实宿主以独占桥接端口。
+
+`npm run desktop:wallpaper:rig` 在嵌套 Plasma 会话里验证真实挂载/恢复链路（`tools/wallpaper-rig.sh`）：自己拉起虚拟 KWin、plasmashell 与独立 D-Bus，不碰用户会话。写临时脚手架必须满足三条硬规则，否则会重演 2026-11-10 的事故（5 个孤儿截图脚本无限循环、19 万次 spectacle 崩溃把 systemd --user 撑到 10 万个单元、拖垮整机负载）：
+
+- 循环必须有界：截图重试有上限、有间隔，失败即退出，不得写成 `while :; do ...; done`。
+- 必须有全局退出路径：正常结束、失败、Ctrl-C、被 kill 都走同一个 cleanup，一次中断不得绕过它。
+- 必须自己收干净进程：任何后台进程都要能被 cleanup 回收，不得依赖父进程退出时的自动收割；孤儿进程会被 systemd --user 收养并长期累积。
+
+工具自身的实现约束同样源于事故：`kwin_wayland` 必须带 `--virtual`（否则与用户会话争用 DRM master）和 `--no-lockscreen`（嵌套会话没有 session manager，KWin 会以锁定模式启动、自己拉起 `kscreenlocker_greet`，锁屏界面盖住整个桌面，截图只能拍到模糊登录框）；不能假设 `dbus-run-session` 能拉起 `kactivitymanagerd`（其 D-Bus 激活依赖 systemd1，独立会话上必然失败，缺了它 plasmashell 会 abort）；`xdg-desktop-portal-kde` 同样要手动拉起（systemd 激活不可用），否则走 portal 的截图请求会一直等。rig 的基线会先把桌面壁纸固定成一张确定的自带壁纸，否则 `org.kde.image` 的 Image 为空、Plasma 退回自带默认壁纸，挂载前后两张图看起来一样，看不出挂载到底有没有生效；rig 最后会自动比对基线/挂载/恢复三张图：挂载后必须有可见差异，恢复后必须与基线逐像素一致。
+
+临时脚本里再强调两条：`qdbus6` 等 D-Bus 调用必须带超时（桌面卡住时不会自己返回）；`pkill -f` 匹配到的可能正是自己那条命令行，要按 `/proc/<pid>/cmdline` 精确匹配。
 
 真实桌面验证应确认：壁纸层位于普通窗口下方；输入完全穿透；全局光标可驱动视线与高光；
 `complete` 自动淡出；安装后没有 XDG autostart 文件、用户服务为 disabled/inactive，

@@ -25,6 +25,9 @@ DEFAULT_COLOR = "#d8d2df"
 DEFAULT_FILL_MODE = "2"
 STATE_VERSION = 1
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
+# qdbus6 会一直等 plasmashell 回应；桌面卡住时必须自己超时，
+# 否则挂载脚本会永久阻塞，把调用方（agent、rig）一起拖死。
+QDBUS_TIMEOUT = 30
 
 
 class StateError(RuntimeError):
@@ -526,7 +529,21 @@ def activate_runtime(
         return True, command, ""
     if not executable:
         return False, [], "Eyes: qdbus6 is required to refresh the live wallpaper"
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=QDBUS_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return (
+            False,
+            command,
+            "Eyes: timed out refreshing the live Plasma wallpaper after "
+            f"{QDBUS_TIMEOUT}s; Plasma may be busy or unresponsive",
+        )
     if result.returncode == 0:
         return True, command, ""
     detail = (result.stderr or result.stdout).strip()
