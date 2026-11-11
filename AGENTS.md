@@ -68,7 +68,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - 浏览器与桌面渲染共享 `eyes-core.js`；不要复制第二套表情参数或眨眼几何。
 - 表情通过共享眼睑参数及中段控制点驱动五点样条，上下眼睑各用 `compileSmooth` 编译为四段曲率连续的三次系数；端点切线取弯曲与斜率的解析值。原始 `compile` 仅保留上游一致性回归，不能恢复重复端点造成的反向肩部曲率。Rive 使用等价三次顶点和切线，参考 Canvas/GLSL 继续回归。不要恢复独立二次曲线近似，不要用大角度整眼旋转代替情绪。按用户要求默认启用少量眉线、问号、星星等辅助元素；眉毛须略长于眼宽，以直线切面保留厚眉头、轻折峰和渐细眉尾。思考状态不显示眼镜或独立符号，由半眯眼形与侧上方视线表达；Rive 必须把辅助层绘制在眼形上方，Canvas 与 Rive 保持同一层级。它们补充眼形，共用表情弹簧与 Rive 素材，禁止单独随机飘动或闪烁。无字体路径与姿态统一定义在核心的 accentDesigns / getAccentStates；辅助层不随眨眼压扁，减少动态效果保留静态提示，显式 accents:false 可关闭。调试台缩略图使用同一素材。
 - `desktop/main.cpp`：无窗口 Qt 后台、Unix socket、WebSocket、D-Bus、托盘和按屏幕映射光标。
-- `integrations/codex/hooks.json`、`integrations/codex/eyes-codex-hook.py`：用户级 Codex 生命周期适配器源；安装到 `~/.codex`，只调用现有 Eyes 命令，错误必须静默并以 0 退出。不要在仓库内保留第二份 `.codex` hook 入口，否则已信任的项目级配置会与用户级配置重复驱动状态。
+- `integrations/codex/hooks.json`、`integrations/codex/eyes-codex-hook.py`：用户级 Codex 生命周期适配器源；安装到 `~/.codex`，只调用现有 Eyes 命令，错误必须静默并以 0 退出。不要在仓库内保留第二份 `.codex` hook 入口，否则已信任的项目级配置会与用户级配置重复驱动状态。`EYES_CODEX_EYES` 一旦显式指定就独占生效：指向不存在的路径表示"没有宿主"，不得回退到已安装的 `eyes`，否则测试会拉起真实的桌面宿主。
 - `integrations/claude/`、`packaging/install-claude-hooks.py`：用户级 Claude Code 适配器源与安装器。适配器只翻译 Claude 事件，状态机复用 `integrations/codex/eyes-codex-hook.py`（安装时复制为 `~/.claude/hooks/eyes_hook_engine.py`）；修改引擎后须重新安装两侧。必须零输出（SessionStart stdout 会进模型上下文），错误静默退出 0；安装器只合并 `settings.json` 的 `hooks`，保留其他键与权限位。见 `docs/CLAUDE-CODE.md`。
 - `integrations/plugins/`、`packaging/install-agent-plugins.py`：opencode 插件与 Pi 扩展接入源。两者只翻译宿主事件，状态机同样复用 `integrations/codex/eyes-codex-hook.py`（安装时复制为 `eyes_hook_engine.py`）。`eyes-bridge.mjs` 串行投递事件、启动引擎进程，并让引擎脱离宿主进程组：opencode 结束一次运行会给整个进程组发 SIGTERM，未脱离时正在投递的事件会被吞掉。opencode 会在同一进程内多次求值插件模块，适配器用 `globalThis` 单例守卫只保留一份订阅与一条事件队列。必须零输出，错误静默退出 0。见 `docs/OPENCODE.md`、`docs/PI.md`。
 - `.codex/config.toml`：项目级 Codex MCP 配置，仅注册 Serena；不承载 lifecycle hooks。
@@ -82,7 +82,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `cmake/RiveGeometry.cmake` / `cmake/rive-clip-cache.cpp` / `desktop/eyes-triangle-clip.h` 在已有三角网格上预裁切向量，并按整个裁切栈（路径与矩阵，按值比较）缓存三角化结果，保留原始 paint 坐标插值；不要用低精度曲线布尔运算替代，不要改变共享眼形。向量裁切完成后清空节点 GPU clip，让清屏和绘制合并为一个颜色通道。`cmake/RiveResources.cmake` 仅在实际需要读取目标颜色的混合模式出现时分配 B / intermediate 多重采样面；首次分配后重绑合成和 SMAA 输入。保留原生输出密度与上述 Automatic 策略，不能关闭低采样后端的 SMAA 兜底；新增复杂裁切须检查 CPU 几何开销。几何回归使用 `cmake --build build --target eyes-geometry-test && build/eyes-geometry-test`，完整约定见 ADR-015。
 - `cmake/RiveRuntime.cmake` 在构建目录生成补丁后的 `blend_state_instance.hpp` 并置于下载头文件之前：混合动画推进时不再扫描 keyed 回调（零权重动画占渲染线程约三分之一忙时）。仅在素材没有 Rive 事件时成立，`tests/rive.test.mjs` 守护这一点；下载的源码保持原样，见 ADR-016。
 - `tests/qml/tst_eyes.qml`：Qt 6 GPU 实际像素、表情、透明边界和眨眼测试。
-- `bin/eyes`：本地控制客户端；连接 `$XDG_RUNTIME_DIR/eyes.sock` 并按需启动宿主。
+- `bin/eyes`：本地控制客户端；连接 `$XDG_RUNTIME_DIR/eyes.sock` 并按需启动宿主。够不到 user manager 时的游离宿主最多一个：pid 记在 `$XDG_CACHE_HOME/eyes/host.pid`，宿主仍存活就不再拉起，否则每次调用都会留下一个没人能连上的宿主。
 - `packaging/migrate-legacy-install.sh`：停止并移除旧版本的命令、插件与自启动项，不删除壁纸图片或用户数据。
 - `packaging/install-user.sh`：用户级安装、应用菜单注册、Codex hooks 与 KWin 脚本注册。默认关闭登录自启动，也不自动启动宿主；`packaging/install-codex-hooks.py` 合并用户 hooks，不得覆盖其他工具条目。
 - `packaging/kwin-eyes-cursor/`：将 KWin 全局光标发送到 `org.eyes.Desktop /Cursor`。

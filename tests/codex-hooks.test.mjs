@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
-  existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync,
-  writeFileSync,
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync,
+  rmSync, statSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -111,6 +111,33 @@ data = json.load(sys.stdin)
 ${script}
 `, resolve('integrations/codex/eyes-codex-hook.py')], env, JSON.stringify(input));
 }
+
+test('an explicit Eyes binary decides whether a host can be launched', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-codex-explicit-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const missing = join(root, 'missing-eyes');
+  const present = join(root, 'eyes');
+  writeFileSync(present, '#!/bin/sh\nexit 0\n');
+  chmodSync(present, 0o755);
+
+  // An explicit override is authoritative. A caller that points at a
+  // missing binary means "no host here", and falling back to the installed
+  // client would start a host that nobody asked for.
+  const absent = await pythonHook(`
+print(json.dumps({
+    "missing": hook.eyes_executable() is None,
+    "present": str(hook.eyes_executable() or ""),
+}))
+`, {}, { ...process.env, EYES_CODEX_EYES: missing });
+  assert.equal(absent.code, 0, absent.stderr);
+  assert.deepEqual(JSON.parse(absent.stdout), { missing: true, present: '' });
+
+  const found = await pythonHook(`
+print(json.dumps({"present": str(hook.eyes_executable() or "")}))
+`, {}, { ...process.env, EYES_CODEX_EYES: present });
+  assert.equal(found.code, 0, found.stderr);
+  assert.equal(JSON.parse(found.stdout).present, present);
+});
 
 test('tools and orchestration wrappers select purposeful activities without executing their input', async () => {
   const cases = [

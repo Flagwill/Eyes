@@ -74,6 +74,34 @@ def executable_candidates() -> list[Path]:
     return [Path(value) for value in values if value]
 
 
+def detached_host_pidfile() -> Path:
+    cache = Path(
+        os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
+    ) / "eyes"
+    return cache / "host.pid"
+
+
+def detached_host_running() -> bool:
+    """Report whether a detached host from an earlier call is still alive.
+
+    The pid file names the process and the command line check makes sure a
+    recycled pid is not mistaken for the host. Without this guard every call
+    that cannot reach the user manager would leave another host behind, and
+    those hosts hold a socket no client of this session can reach.
+    """
+    try:
+        pid = int(
+            detached_host_pidfile().read_text(encoding="utf-8").strip()
+        )
+    except (OSError, ValueError):
+        return False
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    return b"eyes-desktop" in cmdline
+
+
 def launch_desktop() -> None:
     executable = next(
         (
@@ -148,8 +176,10 @@ def launch_desktop() -> None:
         os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
     ) / "eyes"
     cache.mkdir(parents=True, exist_ok=True)
+    if detached_host_running():
+        return
     log = (cache / "desktop.log").open("ab")
-    subprocess.Popen(
+    host = subprocess.Popen(
         [str(executable), "--hidden"],
         stdin=subprocess.DEVNULL,
         stdout=log,
@@ -157,6 +187,10 @@ def launch_desktop() -> None:
         close_fds=True,
         start_new_session=True,
     )
+    try:
+        detached_host_pidfile().write_text(f"{host.pid}\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def connect(timeout: float) -> socket.socket:

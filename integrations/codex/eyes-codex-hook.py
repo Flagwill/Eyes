@@ -64,9 +64,15 @@ def user_suppressed() -> bool:
 
 def eyes_executable() -> Path | None:
     explicit = os.environ.get("EYES_CODEX_EYES")
+    if explicit:
+        # An explicit override is authoritative. A caller that points at a
+        # missing binary means "no host here", and falling back to the
+        # installed client would start a host that nobody asked for and
+        # that no client of this session can reach.
+        path = Path(explicit)
+        return path if path.is_file() and os.access(path, os.X_OK) else None
     source_root = Path(__file__).resolve().parents[2]
     candidates = (
-        explicit,
         Path.home() / ".local" / "bin" / "eyes",
         source_root / "bin" / "eyes",
         shutil.which("eyes"),
