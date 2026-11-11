@@ -717,6 +717,14 @@ var EyesCore = (function () {
     return applyMotion(getPose(emotion), entryMotion(emotion), 1);
   }
 
+  var INHALE_POSE;
+
+  // The pose Rive bakes as `idleact`, reused as the wide look of the wake.
+  function getInhalePose() {
+    if (!INHALE_POSE) INHALE_POSE = getGesturePose('idle', 0);
+    return INHALE_POSE;
+  }
+
   function attentionEnvelope(elapsed) {
     if (elapsed < 0 || elapsed >= 0.68) return 0;
     return elapsed < 0.12
@@ -919,24 +927,36 @@ var EyesCore = (function () {
     );
   }
 
-  // Waking from hidden, in seconds of a dedicated wake clock. The lids rise in
-  // four unhurried movements - a stir, a lazy sag back, the heavy lift to a slit,
-  // then a pause and the final opening - each a quintic rise that starts and
-  // ends at rest, so velocity and acceleration stay continuous and nothing
-  // kicks. A soft over-wide stare, a slight breath toward the viewer, a glance
-  // to orient and one settling blink follow. Gaze, head and tilt sink with the
-  // closed lids and rise as they open. The wake clock only starts after the
-  // scene has drawn smooth frames and never advances more than maxStep per
-  // frame, so a stalled frame freezes the motion instead of skipping ahead.
+  // Waking from hidden, in seconds of a dedicated wake clock: a glimpse, not a
+  // slow rousing. The lids flutter once and press back (the anticipation), then
+  // fly open in about a quarter of a second and carry on past the mood's shape
+  // into a wide-eyed inhale. The gaze is still lowered and turned aside when
+  // the lids part; it lifts to the viewer a beat later, head trailing, face
+  // leaning in, and overshoots a little before it lands. The wide look is
+  // held, then one blink softens it into the mood. Every channel is a quintic
+  // rise or a product of them, starting and ending at rest, so velocity and
+  // acceleration stay continuous: the speed comes from short durations, never
+  // from a kick.
+  // The wake clock only starts after the scene has drawn smooth frames and
+  // never advances more than maxStep per frame, so a stalled frame freezes the
+  // motion instead of skipping ahead.
   var WAKE = {
     // [start, duration, from, to]; every row begins where the last one ended.
-    lids: [[0.20, 0.40, 1, 0.82], [0.60, 0.35, 0.82, 0.90],
-      [0.95, 0.75, 0.90, 0.52], [1.90, 0.55, 0.52, 0]],
-    arrive: 2.05, refocus: 3.0, end: 3.4,
-    widen: 0.08, asymmetry: 0.06, breath: 0.01,
-    droopGaze: 14, droopSide: -5, droopNod: 0.05, droopTilt: 0.016, glanceX: 8,
+    lids: [[0.10, 0.20, 1, 0.80], [0.30, 0.18, 0.80, 0.93], [0.48, 0.28, 0.93, 0]],
+    // [start, duration] of the lowered gaze and head lifting to the viewer.
+    lift: [0.56, 0.46],
+    // [start, attack, hold, release] of the wide look, the overshoot of the
+    // lifting gaze, and the lean toward the viewer.
+    wide: [0.60, 0.30, 0.30, 0.55], glance: [0.76, 0.30, 0.10, 0.55],
+    lean: [0.64, 0.40, 0.20, 0.60], accents: [0.76, 0.60],
+    arrive: 0.52, refocus: 1.5, end: 1.9,
+    // inhale: share of idle's widened inhale pose mixed in at the widest point.
+    inhale: 0.3, asymmetry: 0.06, breath: 0.014,
+    droopGaze: 13, droopSide: -9, droopNod: 0.05, droopTilt: 0.018,
+    glanceX: 3.5, glanceY: -2.5,
     warmFrames: 8, smoothFrame: 0.05, maxStep: 0.04, maxWait: 1.5,
   };
+  var WAKE_SHAPE_KEYS = ['x', 'y', 'w', 'h', 'a', 'u', 'd', 'uc', 'lc', 'u1', 'u3', 'd1', 'd3'];
 
   function smootherstep(value) {
     var t = Math.max(0, Math.min(1, value));
@@ -944,19 +964,23 @@ var EyesCore = (function () {
   }
 
   function getWakeEnvelope(age) {
-    var closed = 1;
-    for (var lid of WAKE.lids) {
+    var closed = 1, peek = 0, opening = WAKE.lids.length - 1;
+    for (var i = 0; i <= opening; i++) {
+      var lid = WAKE.lids[i];
       if (age < lid[0]) break;
       closed = lid[2] + (lid[3] - lid[2]) * smootherstep((age - lid[0]) / lid[1]);
+      if (i < opening) peek = 1 - closed;
     }
     return {
       closed: closed,
-      widen: beat(age, WAKE.arrive, 0.3, 0.1, 0.6) * WAKE.widen,
-      glance: beat(age, 2.4, 0.3, 0.2, 0.4),
-      lean: beat(age, 2.1, 0.4, 0.1, 0.7),
-      // Brows and symbols fade in gently as the final opening begins.
-      accents: smootherstep((age - WAKE.lids[3][0]) / 0.8),
-      light: smootherstep(1 - closed),
+      // The sleeping posture stirs with the flutter, then lifts after the lids.
+      droop: (1 - peek * 0.5) * (1 - smootherstep((age - WAKE.lift[0]) / WAKE.lift[1])),
+      wide: beat(age, WAKE.wide[0], WAKE.wide[1], WAKE.wide[2], WAKE.wide[3]),
+      glance: beat(age, WAKE.glance[0], WAKE.glance[1], WAKE.glance[2], WAKE.glance[3]),
+      lean: beat(age, WAKE.lean[0], WAKE.lean[1], WAKE.lean[2], WAKE.lean[3]),
+      // Brows and symbols arrive once the eyes are open.
+      accents: smootherstep((age - WAKE.accents[0]) / WAKE.accents[1]),
+      light: ease(1 - closed),
     };
   }
 
@@ -1081,8 +1105,9 @@ var EyesCore = (function () {
 
   // Plays the opening sequence from closed lids. Called when the face goes from
   // hidden to shown; reduced motion keeps the plain fade instead. The face
-  // starts in the sleeping posture (set while it is still hidden) and waits,
-  // eyes shut, for smooth frames before the wake clock starts.
+  // starts in the sleeping posture, lowered and turned aside (set while it is
+  // still hidden), and waits, eyes shut, for smooth frames before the wake
+  // clock starts.
   EyeSimulation.prototype.wake = function () {
     if (this.reducedMotion) return;
     this.wakeState = 'warming';
@@ -1148,7 +1173,10 @@ var EyesCore = (function () {
     }
     var waking = this.wakeState !== 'idle';
     var wake = waking ? getWakeEnvelope(this.wakeClock)
-      : {closed: 0, widen: 0, glance: 0, lean: 0, accents: 1, light: 1};
+      : {closed: 0, droop: 0, wide: 0, glance: 0, lean: 0, accents: 1, light: 1};
+    // The wide look is an inhale; a smile or a drowsy mood keeps its own shape.
+    var inhale = wake.wide * WAKE.inhale * Math.max(0, Math.min(1,
+      1 - this.springs.happy.value - this.springs.sleepy.value));
     if (waking && this.wakeClock < WAKE.arrive) {
       // Until the eyes are open, the mood's performance holds at its first beat
       // instead of playing, popping or blinking behind closed lids.
@@ -1244,10 +1272,12 @@ var EyesCore = (function () {
     }
     // Keep the main reflection anchored to the intended target, not micro acting.
     if (waking) {
-      target.gazeY += WAKE.droopGaze * wake.closed;
-      target.gazeX += WAKE.droopSide * wake.closed +
-        (directed || pointing ? 0 : WAKE.glanceX * wake.glance);
-      target.tilt += WAKE.droopTilt * wake.closed;
+      // A real target (the cursor, a directed look) is where the lift lands;
+      // without one the gaze carries a little past the viewer and settles.
+      var carry = directed || pointing ? 0 : wake.glance;
+      target.gazeY += WAKE.droopGaze * wake.droop + WAKE.glanceY * carry;
+      target.gazeX += WAKE.droopSide * wake.droop + WAKE.glanceX * carry;
+      target.tilt += WAKE.droopTilt * wake.droop;
     }
     var lightTargetX = target.gazeX;
     var lightTargetY = target.gazeY;
@@ -1264,12 +1294,18 @@ var EyesCore = (function () {
       applyMotion(target, motion, energy);
     }
     if (waking) {
-      // One eye leads a little through the final opening, then both widen softly.
+      // One eye leads a little through the opening. The spline renderers take
+      // the inhale from the pose; Rive mixes the same baked pose below.
       var openness = 1 - wake.closed;
       var stare = motionPose();
-      stare.open = wake.widen;
       stare.asymmetry = WAKE.asymmetry * 4 * openness * (1 - openness);
       applyMotion(target, stare, 1);
+      if (inhale > 0) {
+        var wide = getInhalePose();
+        for (var eyeSide of ['l', 'r']) for (var shape of WAKE_SHAPE_KEYS) {
+          target[eyeSide + shape] += (wide[eyeSide + shape] - target[eyeSide + shape]) * inhale;
+        }
+      }
     }
 
     target.tilt = Math.max(-0.029, Math.min(0.029, target.tilt));
@@ -1311,7 +1347,7 @@ var EyesCore = (function () {
       emotionAge, currentCues) : {lean: 0, nod: 0};
     var faceYaw = this.face.yaw.step(faceTarget.yaw, dt);
     var facePitch = this.face.pitch.step(Math.max(-0.28, Math.min(0.28,
-      faceTarget.pitch + body.nod * energy + WAKE.droopNod * wake.closed)), dt);
+      faceTarget.pitch + body.nod * energy + WAKE.droopNod * wake.droop)), dt);
     var faceLean = this.face.lean.step(Math.max(-LEAN_LIMIT, Math.min(LEAN_LIMIT,
       body.lean * energy + WAKE.breath * wake.lean)), dt);
     if (!reduce) this.lightTime += dt;
@@ -1351,7 +1387,11 @@ var EyesCore = (function () {
       var variants=[(1-gestureSum)*(1-entering),gestures[0]*(1-entering),entering,
         gestures[1]*(1-entering),gestures[2]*(1-entering)];
       for (var variant = 0; variant < 5; ++variant) {
-        var contribution = rawWeights[e] / Math.max(0.000001, weightSum) * variants[variant];
+        var contribution = rawWeights[e] / Math.max(0.000001, weightSum) * variants[variant] *
+          (1 - inhale);
+        // Idle's first gesture is baked at double strength: a clean, widened
+        // inhale with no symbols of its own.
+        if (inhale > 0 && emotionId === 'idle' && variant === 1) contribution += inhale;
         accumulated += contribution;
         // Direct blends apply in order. Convert barycentric weights to Rive's
         // successive interpolation factors, so even interrupted morphs blend

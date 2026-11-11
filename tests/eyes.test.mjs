@@ -997,41 +997,50 @@ test('activities inherit their mood’s blink habit', () => {
   assert.ok(next.sleepy.duration > next.idle.duration && next.reading.next > next.idle.next + 1.5);
 });
 
-test('the wake envelope is a chain of unhurried movements with no velocity or acceleration steps', () => {
+test('the wake envelope is one flutter and a swift opening, with no velocity or acceleration steps', () => {
   const core = globalThis.EyesCore, wake = core.WAKE;
-  const channels = ['closed', 'widen', 'glance', 'lean', 'accents', 'light'];
+  const channels = ['closed', 'droop', 'wide', 'glance', 'lean', 'accents', 'light'];
   const step = 0.001;
   const samples = [];
   for (let age = 0; age <= wake.end + 0.2; age += step) samples.push(core.getWakeEnvelope(age));
+  assert.deepEqual(Object.keys(samples[0]), channels);
   assert.equal(samples[0].closed, 1);
   assert.equal(core.getWakeEnvelope(wake.lids[0][0]).closed, 1, 'closed while the glass settles');
   for (const [i, lid] of wake.lids.entries()) {
     if (i) assert.equal(lid[2], wake.lids[i - 1][3], 'each movement starts where the last one ended');
     assert.ok(Math.abs(core.getWakeEnvelope(lid[0] + lid[1]).closed - lid[3]) < 1e-9);
   }
-  assert.equal(wake.lids.at(-1)[3], 0, 'the last movement opens the eyes fully');
-  const speed = (name, i) => (samples[i + 1][name] - samples[i][name]) / step;
+  const opening = wake.lids.at(-1), opened = opening[0] + opening[1];
+  assert.equal(opening[3], 0, 'the last movement opens the eyes fully');
+  // A step in velocity would spike the acceleration, and a step in
+  // acceleration would change it by its whole peak between two samples.
   for (const name of channels) {
-    let peakSpeed = 0, peakAcceleration = 0;
-    for (let i = 1; i < samples.length - 2; i++) {
-      peakSpeed = Math.max(peakSpeed, Math.abs(speed(name, i)));
-      peakAcceleration = Math.max(peakAcceleration, Math.abs(speed(name, i) - speed(name, i - 1)) / step);
-    }
-    const beatChannel = ['widen', 'glance', 'lean'].includes(name), scale = name === 'widen' ? wake.widen : 1;
-    assert.ok(peakSpeed / scale < (beatChannel ? 7 : ['accents', 'light'].includes(name) ? 3 : 2.2), `${name}: peak speed ${peakSpeed.toFixed(2)}/s stays gentle`);
-    assert.ok(peakAcceleration / scale < (beatChannel ? 80 : 40), `${name}: peak acceleration ${peakAcceleration.toFixed(1)}/s² has no jump`);
+    const acceleration = [];
+    for (let i = 1; i < samples.length - 1; i++)
+      acceleration.push((samples[i + 1][name] - 2 * samples[i][name] + samples[i - 1][name]) / step / step);
+    const peak = Math.max(...acceleration.map(Math.abs));
+    let change = 0;
+    for (let i = 1; i < acceleration.length; i++) change = Math.max(change, Math.abs(acceleration[i] - acceleration[i - 1]));
+    assert.ok(peak < 150, `${name}: peak acceleration ${peak.toFixed(1)}/s² is bounded`);
+    assert.ok(change < peak * 0.06, `${name}: acceleration changes by ${(change / peak).toFixed(3)} of its peak in 1 ms`);
   }
-  // Slower and softer than the first version, which snapped open at 7.5 closure/s.
-  let fastest = 0;
-  for (let i = 0; i < samples.length - 1; i++) fastest = Math.max(fastest, -speed('closed', i));
-  assert.ok(fastest < 2.2 && wake.lids.at(-1)[1] >= 0.5, 'the final opening is no faster than 2.2 closure/s');
-  const sag = core.getWakeEnvelope(wake.lids[1][0] + wake.lids[1][1]).closed;
-  assert.ok(sag > core.getWakeEnvelope(wake.lids[0][0] + wake.lids[0][1]).closed, 'a lazy sag after the first stir');
-  assert.equal(core.getWakeEnvelope(wake.lids[2][0] + wake.lids[2][1] + 0.1).closed, wake.lids[3][2], 'a pause at the slit');
-  assert.equal(core.getWakeEnvelope(wake.lids[2][0] + wake.lids[2][1]).accents, 0, 'brows wait for the eyes');
-  assert.equal(core.getWakeEnvelope(wake.end).accents, 1);
-  assert.ok(core.getWakeEnvelope(wake.arrive + 0.35).widen > wake.widen * 0.9, 'a soft over-wide stare once open');
-  assert.equal(core.getWakeEnvelope(wake.end + 1).widen, 0);
+  // Swift, yet slower than the reopening half of an ordinary blink.
+  let fastest = 0, blinkOpens = 0;
+  for (let i = 0; i < samples.length - 1; i++) fastest = Math.max(fastest, (samples[i].closed - samples[i + 1].closed) / step);
+  for (let time = 0.12; time < 0.32; time += step) blinkOpens = Math.max(blinkOpens, (blinkAmount(time) - blinkAmount(time + step)) / step);
+  assert.ok(fastest > 5 && fastest < blinkOpens * 0.9, `the opening peaks at ${fastest.toFixed(2)} closure/s (a blink reopens at ${blinkOpens.toFixed(2)})`);
+  assert.ok(opened <= 0.8 && wake.end <= 2, 'the eyes are open within 0.8 s and the sequence is over within 2 s');
+  const flutter = core.getWakeEnvelope(wake.lids[0][0] + wake.lids[0][1]).closed;
+  assert.ok(flutter < 0.9 && opening[2] > flutter + 0.1, 'the lids flutter, then press back before they open');
+  // The lowered gaze waits for the lids, then lifts; the wide look is held.
+  assert.ok(core.getWakeEnvelope(opening[0] + opening[1] / 2).droop > 0.9, 'the gaze is still lowered when the lids are half open');
+  assert.ok(wake.lift[0] + wake.lift[1] > opened + 0.2, 'and reaches the viewer after the lids have opened');
+  assert.equal(core.getWakeEnvelope(opening[0]).wide, 0);
+  assert.ok(core.getWakeEnvelope(opened + 0.05).wide > 0.5, 'the opening carries on into the wide look');
+  assert.equal(core.getWakeEnvelope(wake.wide[0] + wake.wide[1] + wake.wide[2] / 2).wide, 1, 'which is held');
+  assert.equal(core.getWakeEnvelope(opening[0]).accents, 0, 'brows wait for the eyes');
+  assert.deepEqual(core.getWakeEnvelope(wake.end),
+    { closed: 0, droop: 0, wide: 0, glance: 0, lean: 0, accents: 1, light: 1 }, 'every channel is at rest when the wake ends');
 });
 
 function wakeRun(emotion, seconds, setup) {
@@ -1048,6 +1057,19 @@ function wakeRun(emotion, seconds, setup) {
   return { sim, frames };
 }
 
+// Rive receives successive interpolation factors; recover the share of the
+// picture that one baked pose actually ends up with.
+function riveShare(inputs, name) {
+  const keys = EXPRESSIONS.flatMap(item => ['still', 'act', 'entry', 'follow', 'resolve'].map(variant => item.id + variant));
+  let later = 1;
+  for (let i = keys.length - 1; i >= 0; i--) {
+    const factor = inputs[keys[i]] / 100;
+    if (keys[i] === name) return factor * later;
+    later *= 1 - factor;
+  }
+  throw new RangeError(`Unknown Rive pose: ${name}`);
+}
+
 test('wake waits for smooth frames, then plays without a frame ever skipping ahead', () => {
   const wake = globalThis.EyesCore.WAKE;
   const held = wakeRun('curious', 1, sim => { sim.wakeHold = true; });
@@ -1056,7 +1078,7 @@ test('wake waits for smooth frames, then plays without a frame ever skipping ahe
   const timeout = wakeRun('curious', wake.maxWait + 0.3, sim => { sim.wakeHold = true; });
   assert.equal(timeout.sim.wakeState, 'playing', 'a host that never reports ready cannot keep the eyes shut forever');
 
-  const { sim, frames } = wakeRun('curious', 0.5);
+  const { frames } = wakeRun('curious', 0.5);
   const started = frames.findIndex(item => item.state === 'playing');
   assert.ok(started >= wake.warmFrames - 1 && started <= wake.warmFrames + 1, 'eight smooth frames warm the scene up');
   assert.ok(frames.slice(0, started).every(item => item.frame.blink > 0.99), 'closed while warming');
@@ -1065,8 +1087,9 @@ test('wake waits for smooth frames, then plays without a frame ever skipping ahe
   const stalled = new EyeSimulation({ random: () => 0.5 });
   for (let i = 0; i < 60; i++) stalled.update(1 / 60);
   stalled.wake();
-  for (let i = 0; i < 60; i++) stalled.update(1 / 60);
+  for (let i = 0; i < 40; i++) stalled.update(1 / 60);
   const before = stalled.wakeClock;
+  assert.ok(before > wake.lids.at(-1)[0] && before < wake.lids.at(-1)[0] + wake.lids.at(-1)[1], 'stalling in the middle of the opening');
   stalled.update(0.12);
   assert.ok(stalled.wakeClock - before <= wake.maxStep + 1e-9, 'a 120 ms stall advances the wake by at most one short step');
   // A stall during warm-up restarts the count instead of counting as a smooth frame.
@@ -1080,53 +1103,107 @@ test('wake waits for smooth frames, then plays without a frame ever skipping ahe
 
 test('every wake channel moves smoothly frame to frame, with no kick at any phase', () => {
   const wake = globalThis.EyesCore.WAKE;
-  const { frames } = wakeRun('curious', 5);
-  const series = name => frames.map(item => {
-    const f = item.frame;
-    return { blink: f.riveInputs.blink / 100, gazeY: f.pose.gazeY, gazeX: f.pose.gazeX,
-      pitch: f.face.pitch, yaw: f.face.yaw, lean: f.face.lean, accents: f.riveInputs.accents / 100,
-      flow: f.riveInputs.flow / 100, tilt: f.pose.tilt, bounce: f.bounce }[name];
-  });
-  // The settling blink is an ordinary blink; everything before it is the wake.
-  const refocusFrame = frames.findIndex(item => item.state === 'playing' && item.clock >= wake.refocus);
-  const limits = { blink: 0.0035, gazeY: 0.08, gazeX: 0.08, pitch: 0.0006, yaw: 0.0006, lean: 0.0003,
-    accents: 0.003, flow: 0.01, tilt: 0.0004, bounce: 0.0004 };
-  for (const [name, limit] of Object.entries(limits)) {
-    const values = series(name);
-    // Warm-up frames are still closed and hidden behind the fading glass.
-    for (let i = frames.findIndex(item => item.state === 'playing') + 2; i < refocusFrame; i++) {
-      const acceleration = Math.abs(values[i] - 2 * values[i - 1] + values[i - 2]);
-      assert.ok(acceleration <= limit, `${name} jumps by ${acceleration.toFixed(5)} at frame ${i} (limit ${limit})`);
+  let ordinaryBlink = 0;
+  for (let i = 2; i < 30; i++) ordinaryBlink = Math.max(ordinaryBlink,
+    Math.abs(blinkAmount(i / 60) - 2 * blinkAmount((i - 1) / 60) + blinkAmount((i - 2) / 60)));
+  // The opening is quick, but its hardest frame is a fraction of an ordinary blink's.
+  const limits = { blink: ordinaryBlink / 6, gazeY: 0.1, gazeX: 0.09, pitch: 0.0007, yaw: 0.0005, lean: 0.0003,
+    accents: 0.006, flow: 0.03, tilt: 0.0004, bounce: 0.0004, inhale: 0.007 };
+  for (const emotion of ['curious', 'focused', 'idle']) {
+    const { frames } = wakeRun(emotion, 4);
+    const series = name => frames.map(item => {
+      const f = item.frame;
+      return { blink: f.riveInputs.blink / 100, gazeY: f.pose.gazeY, gazeX: f.pose.gazeX,
+        pitch: f.face.pitch, yaw: f.face.yaw, lean: f.face.lean, accents: f.riveInputs.accents / 100,
+        flow: f.riveInputs.flow / 100, tilt: f.pose.tilt, bounce: f.bounce,
+        inhale: riveShare(f.riveInputs, 'idleact') }[name];
+    });
+    // The settling blink is an ordinary blink; everything before it is the wake.
+    const refocusFrame = frames.findIndex(item => item.state === 'playing' && item.clock >= wake.refocus);
+    for (const [name, limit] of Object.entries(limits)) {
+      const values = series(name);
+      // Warm-up frames are still closed and hidden behind the fading glass.
+      for (let i = frames.findIndex(item => item.state === 'playing') + 2; i < refocusFrame; i++) {
+        const acceleration = Math.abs(values[i] - 2 * values[i - 1] + values[i - 2]);
+        assert.ok(acceleration <= limit, `${emotion}: ${name} jumps by ${acceleration.toFixed(5)} at frame ${i} (limit ${limit})`);
+      }
     }
+    const first = frames[0].frame;
+    assert.equal(first.riveInputs.accents, 0);
+    assert.ok(first.blink > 0.99, 'the first frame is a closed line');
   }
-  const first = frames[0].frame;
-  assert.equal(first.riveInputs.accents, 0);
-  assert.ok(first.blink > 0.99, 'the first frame is a closed line');
 });
 
-test('the face starts in a sleeping posture and rises as the lids open', () => {
-  const wake = globalThis.EyesCore.WAKE;
+test('the face sleeps lowered and turned aside, the lids open first and the gaze lifts to the viewer', () => {
+  const wake = globalThis.EyesCore.WAKE, opened = wake.lids.at(-1)[0] + wake.lids.at(-1)[1];
   const awake = wakeRun('curious', 0.1, sim => { sim.wake = () => {}; }).frames.at(-1).frame;
-  const { frames } = wakeRun('curious', 4.5);
+  const { frames } = wakeRun('curious', 3);
   const at = seconds => frames.find(item => item.state === 'playing' && item.clock >= seconds).frame;
-  const sleeping = at(0.1);
+  const sleeping = at(0.05);
   assert.ok(sleeping.pose.gazeY > awake.pose.gazeY + wake.droopGaze * 0.8, 'eyes look down under closed lids');
+  assert.ok(sleeping.pose.gazeX < awake.pose.gazeX + wake.droopSide * 0.8, 'and away to the side');
   assert.ok(sleeping.face.pitch > awake.face.pitch + 0.1, 'the head hangs');
   assert.ok(Math.abs(sleeping.pose.tilt - awake.pose.tilt) > 0.005, 'and tips slightly');
-  const open = at(wake.arrive + 0.6);
-  assert.ok(open.pose.gazeY < sleeping.pose.gazeY - 8 && open.face.pitch < sleeping.face.pitch - 0.08, 'both rise with the lids');
-  assert.ok(sleeping.riveInputs.flow < 5 && open.riveInputs.flow > 40, 'reflections wake with the eyes');
-  const glance = frames.filter(item => item.state === 'playing' && item.clock >= 2.4 && item.clock <= wake.end)
-    .map(item => item.frame.pose.gazeX);
-  assert.ok(Math.max(...glance) > at(2.3).pose.gazeX + wake.glanceX * 0.6, 'a glance to orient before the settling blink');
-  assert.ok(Math.max(...glance) > glance.at(-1) + 3, 'and the eyes come back from it');
-  assert.ok(frames.slice(Math.round((wake.arrive + 0.5) * 60)).some(item => item.frame.face.lean > 0.002), 'a breath toward the viewer');
-  // One eye leads a little through the final opening, then they match again.
-  // Idle is symmetric, so any difference comes from the wake.
-  const calm = wakeRun('idle', 4.5).frames;
-  const calmAt = seconds => calm.find(item => item.state === 'playing' && item.clock >= seconds).frame.pose;
-  assert.ok(Math.abs(calmAt(2.2).lh - calmAt(2.2).rh) > 4, 'the two eyes open slightly out of step');
+  const justOpen = at(opened);
+  assert.ok(justOpen.blink < 0.01 && justOpen.pose.gazeY > awake.pose.gazeY + wake.droopGaze * 0.7,
+    'the lids are open while the gaze is still lowered');
+  const met = at(wake.lift[0] + wake.lift[1] + 0.15);
+  assert.ok(met.pose.gazeY < awake.pose.gazeY + 1 && met.pose.gazeX > awake.pose.gazeX - 1, 'then the gaze lifts to the viewer');
+  assert.ok(met.face.pitch < justOpen.face.pitch - 0.08 && met.face.yaw > justOpen.face.yaw + 0.04, 'the head trails it up and round');
+  assert.ok(sleeping.riveInputs.flow < 5 && met.riveInputs.flow > 40, 'reflections wake with the eyes');
+
+  // Idle holds still and symmetric for seconds, so what follows is the wake alone.
+  const calm = wakeRun('idle', 3).frames;
+  const calmAt = seconds => calm.find(item => item.state === 'playing' && item.clock >= seconds).frame;
+  const playing = calm.filter(item => item.state === 'playing');
+  const carried = Math.max(...playing.map(item => item.frame.pose.gazeX));
+  assert.ok(carried > wake.glanceX * 0.8 && Math.min(...playing.map(item => item.frame.pose.gazeY)) < wake.glanceY * 0.8,
+    'the lift carries a little past the viewer');
+  assert.ok(Math.abs(playing.at(-1).frame.pose.gazeX) < 1, 'and settles back');
+  assert.ok(calmAt(0.3).face.lean < 0.003 && Math.max(...playing.map(item => item.frame.face.lean)) > 0.008,
+    'the face leans in as the gaze arrives');
+  assert.ok(Math.abs(calmAt(0.62).pose.lh - calmAt(0.62).pose.rh) > 4, 'the two eyes open slightly out of step');
   assert.ok(Math.abs(calm.at(-1).frame.pose.lh - calm.at(-1).frame.pose.rh) < 0.5, 'and settle together');
+
+  // A real target is where the lift lands: no carrying past the cursor.
+  const pointed = wakeRun('idle', 3, sim => { sim.follow = true; sim.setPointer(10, 5, true); }).frames;
+  assert.ok(Math.max(...pointed.map(item => item.frame.pose.gazeX)) < 10.5);
+  assert.ok(Math.min(...pointed.map(item => item.frame.pose.gazeY)) > 4.5);
+});
+
+test('the opening carries on into a wide-eyed inhale that every renderer shows, except on a smile or a drowsy face', () => {
+  const core = globalThis.EyesCore, wake = core.WAKE;
+  const held = wake.wide[0] + wake.wide[1] + wake.wide[2] / 2;
+  const inhale = core.getGesturePose('idle', 0);
+  for (const emotion of ['curious', 'focused', 'thinking', 'editing']) {
+    // Rive mixes idle's baked inhale pose in at the widest point, then lets go.
+    const acted = wakeRun(emotion, 4).frames;
+    const share = riveShare(acted.find(item => item.state === 'playing' && item.clock >= held).frame.riveInputs, 'idleact');
+    assert.ok(Math.abs(share - wake.inhale) < 0.01, `${emotion}: Rive shows ${share.toFixed(3)} of the inhale pose`);
+    assert.equal(riveShare(acted.at(-1).frame.riveInputs, 'idleact'), 0, `${emotion}: the mood owns the whole picture again`);
+    // The spline renderers get the same blend through the pose. Without the
+    // mood's own acting, the eye heights are the held pose and the wake alone.
+    const { frames } = wakeRun(emotion, 4, sim => { sim.autonomous = false; });
+    const wide = frames.find(item => item.state === 'playing' && item.clock >= held).frame.pose;
+    const resting = getPose(emotion), settled = frames.at(-1).frame.pose;
+    for (const side of ['l', 'r']) {
+      const key = side + 'h', expected = resting[key] + (inhale[key] - resting[key]) * wake.inhale;
+      assert.ok(wide[key] > resting[key] + 8, `${emotion}: the ${side} eye is visibly wider`);
+      assert.ok(Math.abs(wide[key] - expected) < expected * 0.04, `${emotion}: the ${side} spline eye ${wide[key].toFixed(1)} matches the Rive blend ${expected.toFixed(1)}`);
+      assert.ok(Math.abs(settled[key] - resting[key]) < 0.5, `${emotion}: and returns to the mood`);
+    }
+  }
+  for (const emotion of ['happy', 'complete', 'sleepy']) {
+    const { frames } = wakeRun(emotion, 3);
+    assert.ok(frames.every(item => riveShare(item.frame.riveInputs, 'idleact') === 0), `${emotion}: no inhale in Rive`);
+    assert.ok(frames.every(item => item.frame.pose.lh < 34 && item.frame.pose.rh < 34), `${emotion}: the band keeps its thickness`);
+  }
+  // Barycentric weights still add up to the whole picture at the widest point.
+  const frame = wakeRun('curious', 4).frames.find(item => item.state === 'playing' && item.clock >= held).frame;
+  let total = 0;
+  for (const item of EXPRESSIONS) for (const variant of ['still', 'act', 'entry', 'follow', 'resolve'])
+    total += riveShare(frame.riveInputs, item.id + variant);
+  assert.ok(Math.abs(total - 1) < 1e-9);
 });
 
 test('the mood performance, blinks and pops wait for the eyes and never jump when the wake ends', () => {
@@ -1137,8 +1214,11 @@ test('the mood performance, blinks and pops wait for the eyes and never jump whe
   assert.ok(entering.slice(0, arrive).every(value => value < 0.5), 'nothing is performed behind closed lids');
   assert.ok(entering.slice(arrive).some(value => value > 5), 'the entry beat plays as the eyes open');
   assert.ok(frames.slice(0, arrive).every(item => Math.abs(item.frame.bounce) < 1e-9), 'no pop while asleep');
-  const closedSpan = frames.filter(item => item.state === 'playing' && item.clock < wake.lids[1][0]);
-  assert.ok(closedSpan.every(item => item.frame.blink > 0.17), 'no automatic blink during the wake');
+  const closedSpan = frames.filter(item => item.state === 'playing' && item.clock < wake.lids.at(-1)[0]);
+  assert.ok(closedSpan.every(item => item.frame.blink > 0.79), 'only the flutter moves the lids before the opening');
+  const settling = frames.findIndex(item => item.state === 'playing' && item.clock >= wake.refocus);
+  assert.ok(frames.slice(arrive + 20, settling).every(item => item.frame.blink < 0.01), 'no blink interrupts the held look');
+  assert.ok(frames.slice(settling, settling + 12).some(item => item.frame.blink > 0.9), 'one settling blink closes it');
   const ended = frames.findIndex(item => item.state === 'idle');
   assert.ok(ended > arrive);
   for (let i = 1; i < frames.length; i++) {
@@ -1157,12 +1237,15 @@ test('reduced motion skips the wake, and a simulation that never woke keeps its 
   assert.equal(sim.wakeState, 'idle');
   for (const state of ['warming', 'playing']) {
     const live = new EyeSimulation();
+    live.setEmotion('focused');
     live.update(1 / 60);
     live.wake();
     if (state === 'playing') for (let i = 0; i < 40; i++) live.update(1 / 60);
     assert.equal(live.wakeState, state);
     live.reducedMotion = true;
-    assert.equal(live.update(1 / 60).blink, 0, `turning on reduced motion while ${state} opens the eyes at once`);
+    const opened = live.update(1 / 60);
+    assert.equal(opened.blink, 0, `turning on reduced motion while ${state} opens the eyes at once`);
+    assert.equal(riveShare(opened.riveInputs, 'idleact'), 0, 'and drops the inhale with it');
   }
   const idle = new EyeSimulation();
   for (let i = 0; i < 30; i++) assert.equal(idle.update(1 / 60).accents, 1);

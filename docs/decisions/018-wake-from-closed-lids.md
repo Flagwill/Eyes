@@ -4,6 +4,10 @@
 Accepted, 2026-11-10. Revised the same day after the first version stuttered and
 felt abrupt (see "First version" below).
 
+The timeline and lid choreography below were replaced on 2026-11-11 by
+[ADR-019](019-wake-as-a-glimpse.md) after the sequence proved too slow and flat.
+The triggers, wake clock, start-up gating and re-anchored mood clocks still apply.
+
 ## Context
 Showing Eyes only faded a ready-open pair of eyes in over the frosted glass. The
 face goes from hidden to shown at every work session start, so the arrival is the
