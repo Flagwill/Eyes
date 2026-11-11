@@ -1,7 +1,5 @@
 # Eyes
 
-Eyes 是本项目唯一的产品名称。
-
 Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它在壁纸上方铺一层半透明磨砂玻璃，用一双紫色抽象眼睛表达好奇、思考、专注、等待和完成。动画由连续的弹簧参数驱动，支持自动眨眼、八方向视线、系统光标跟随和基础情绪。
 
 ![Eyes 全屏构图](docs/gallery/preview-fullscreen.jpg)
