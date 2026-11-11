@@ -16,6 +16,7 @@
     "desktop:wallpaper:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/wallpaper.test.mjs",
     "desktop:wallpaper:rig": "npm run desktop:build && bash tools/wallpaper-rig.sh",
     "codex:hooks:install": "python3 packaging/install-codex-hooks.py",
+    "claude:hooks:install": "python3 packaging/install-claude-hooks.py",
     "desktop": "npm run desktop:build && ./bin/eyes show",
     "desktop:install": "bash packaging/install-user.sh"
   },

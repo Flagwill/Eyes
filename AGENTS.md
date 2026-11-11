@@ -69,6 +69,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - 表情通过共享眼睑参数及中段控制点驱动五点样条，上下眼睑各用 `compileSmooth` 编译为四段曲率连续的三次系数；端点切线取弯曲与斜率的解析值。原始 `compile` 仅保留上游一致性回归，不能恢复重复端点造成的反向肩部曲率。Rive 使用等价三次顶点和切线，参考 Canvas/GLSL 继续回归。不要恢复独立二次曲线近似，不要用大角度整眼旋转代替情绪。按用户要求默认启用少量眉线、问号、星星等辅助元素；眉毛须略长于眼宽，以直线切面保留厚眉头、轻折峰和渐细眉尾。思考状态不显示眼镜或独立符号，由半眯眼形与侧上方视线表达；Rive 必须把辅助层绘制在眼形上方，Canvas 与 Rive 保持同一层级。它们补充眼形，共用表情弹簧与 Rive 素材，禁止单独随机飘动或闪烁。无字体路径与姿态统一定义在核心的 accentDesigns / getAccentStates；辅助层不随眨眼压扁，减少动态效果保留静态提示，显式 accents:false 可关闭。调试台缩略图使用同一素材。
 - `desktop/main.cpp`：无窗口 Qt 后台、Unix socket、WebSocket、D-Bus、托盘和按屏幕映射光标。
 - `integrations/codex/hooks.json`、`integrations/codex/eyes-codex-hook.py`：用户级 Codex 生命周期适配器源；安装到 `~/.codex`，只调用现有 Eyes 命令，错误必须静默并以 0 退出。不要在仓库内保留第二份 `.codex` hook 入口，否则已信任的项目级配置会与用户级配置重复驱动状态。
+- `integrations/claude/`、`packaging/install-claude-hooks.py`：用户级 Claude Code 适配器源与安装器。适配器只翻译 Claude 事件，状态机复用 `integrations/codex/eyes-codex-hook.py`（安装时复制为 `~/.claude/hooks/eyes_hook_engine.py`）；修改引擎后须重新安装两侧。必须零输出（SessionStart stdout 会进模型上下文），错误静默退出 0；安装器只合并 `settings.json` 的 `hooks`，保留其他键与权限位。见 `docs/CLAUDE-CODE.md`。
 - `.codex/config.toml`：项目级 Codex MCP 配置，仅注册 Serena；不承载 lifecycle hooks。
 - `.serena/`：Serena 项目配置与分层项目记忆；`cache/` 和 `project.local.yml` 为本地状态。
 - `.beads/`：Beads issue 数据库配置、Git hooks 与受版本控制的元数据；Dolt 数据库和运行时文件不提交。

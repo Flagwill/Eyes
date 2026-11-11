@@ -91,6 +91,8 @@ chmod 0644 "$application_entry"
 # User-level hooks stay available outside this checkout and apply to every
 # Codex project. The installer preserves unrelated hook definitions.
 python3 "$project_root/packaging/install-codex-hooks.py"
+# Claude Code gets the same lifecycle presence; skipped when it is not installed.
+python3 "$project_root/packaging/install-claude-hooks.py"
 
 # Installation must leave the person's wallpaper untouched. Restore any
 # temporary mount left by a crash and repair the permanent mount written by
