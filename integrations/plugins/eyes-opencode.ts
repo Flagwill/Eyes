@@ -20,6 +20,7 @@ import { createBridge } from "./eyes-bridge.mjs";
 type EngineEvent = {
   hook_event_name: string;
   session_id: string;
+  source?: string;
   tool_name?: string;
   tool_input?: unknown;
   tool_use_id?: string;
@@ -59,6 +60,12 @@ const TOOL_ALIASES: Record<string, string> = {
 export function translateTool(tool: string): string {
   const name = String(tool || "").toLowerCase();
   return TOOL_ALIASES[name] ?? name;
+}
+
+const SOURCE = "opencode";
+
+function withSource(event: EngineEvent | null): EngineEvent | null {
+  return event ? { ...event, source: SOURCE } : null;
 }
 
 /**
@@ -128,7 +135,13 @@ export function createTranslator() {
     };
   }
 
-  return { event, tool };
+  // The user can tell Eyes which agent to follow. Every event names the
+  // agent it came from so the shared engine can drop the others.
+  return {
+    event: (raw: OpencodeEvent) => withSource(event(raw)),
+    tool: (input: ToolHookInput, phase: "before" | "after") =>
+      withSource(tool(input, phase)),
+  };
 }
 
 export const plugin: Plugin = {

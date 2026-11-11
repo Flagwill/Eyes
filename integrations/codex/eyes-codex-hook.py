@@ -52,6 +52,44 @@ def visibility_marker() -> Path:
     return state_home / "eyes" / "user-visibility"
 
 
+# The agents a user can choose to follow. "all" keeps every agent in charge.
+AGENT_SOURCES = ("codex", "claude", "pi", "opencode")
+
+
+def agent_source_marker() -> Path:
+    state_home = Path(
+        os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")
+    )
+    return state_home / "eyes" / "agent-source"
+
+
+def selected_agent_source() -> str:
+    """Return the agent the user chose to follow, or "all".
+
+    The choice lives in a file next to the user visibility marker because it
+    is the same kind of decision: a user preference that outlives the
+    session and the host process.
+    """
+    try:
+        value = agent_source_marker().read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        return "all"
+    return value if value in AGENT_SOURCES else "all"
+
+
+def event_source(event: dict[str, Any]) -> str:
+    """Return the agent that produced the event.
+
+    This engine is the Codex hook, so an event without a source comes from
+    Codex. The other adapters stamp their own name before handing the event
+    over.
+    """
+    value = event.get("source")
+    if isinstance(value, str) and value.strip():
+        return value.strip().lower()
+    return "codex"
+
+
 def user_suppressed() -> bool:
     try:
         visibility_marker().stat()
@@ -566,6 +604,11 @@ def transition(event: dict[str, Any], state: dict[str, Any]) -> str | None:
 def handle(event: dict[str, Any], *, now: float | None = None) -> None:
     session_id = event.get("session_id")
     if not isinstance(session_id, str) or not session_id:
+        return
+    selected = selected_agent_source()
+    if selected != "all" and event_source(event) != selected:
+        # The user follows another agent. This event is not ours to report,
+        # and it must not touch the state of the agent that is followed.
         return
 
     directory = state_directory()

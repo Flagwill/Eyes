@@ -139,6 +139,56 @@ print(json.dumps({"present": str(hook.eyes_executable() or "")}))
   assert.equal(JSON.parse(found.stdout).present, present);
 });
 
+test('the engine follows only the agent the user chose', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-codex-agent-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runtime = join(root, 'runtime');
+  const state = join(root, 'state');
+  mkdirSync(runtime, { recursive: true });
+  mkdirSync(join(state, 'eyes'), { recursive: true });
+  writeFileSync(join(state, 'eyes', 'agent-source'), 'codex\n');
+
+  const result = await pythonHook(`
+calls = []
+hook.dispatch = calls.append
+for source in ("claude", "pi", "opencode"):
+    hook.handle({"hook_event_name": "UserPromptSubmit",
+                 "session_id": "other-" + source, "source": source})
+hook.handle({"hook_event_name": "UserPromptSubmit", "session_id": "mine",
+             "source": "codex"})
+print(json.dumps(calls))
+`, {}, { ...process.env, XDG_RUNTIME_DIR: runtime, XDG_STATE_HOME: state });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), ['activity listening'],
+    'only the chosen agent may reach the host');
+  // An ignored agent must not leave a session behind either.
+  const sessions = existsSync(join(runtime, 'eyes-codex'))
+    ? readdirSync(join(runtime, 'eyes-codex')).filter((name) => name.endsWith('.json'))
+    : [];
+  assert.equal(sessions.length, 1);
+});
+
+test('every agent drives the eyes until the user picks one', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-codex-all-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runtime = join(root, 'runtime');
+  const state = join(root, 'state');
+  mkdirSync(runtime, { recursive: true });
+  mkdirSync(state, { recursive: true });
+
+  const result = await pythonHook(`
+calls = []
+hook.dispatch = calls.append
+for source in ("claude", "pi", "opencode"):
+    hook.handle({"hook_event_name": "UserPromptSubmit",
+                 "session_id": "any-" + source, "source": source})
+print(json.dumps(calls))
+`, {}, { ...process.env, XDG_RUNTIME_DIR: runtime, XDG_STATE_HOME: state });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).length, 3,
+    'without a choice every agent stays in charge');
+});
+
 test('tools and orchestration wrappers select purposeful activities without executing their input', async () => {
   const cases = [
     ['Write', {file_path:'/tmp/new-file'}, 'creating'],

@@ -48,3 +48,7 @@ npm run claude:hooks:install    # 或运行 packaging/install-user.sh，它会�
 - 子智能体工具调用携带同一 `session_id`，会驱动同一画面。
 - `Stop` 在模型向用户提问时也会触发，Eyes 可能先显示完成再被下一条消息唤回。
 - Claude Code 的 hook 载荷字段以官方文档为准；`Notification` 的类型过滤主要依赖 settings 的 matcher。
+
+## 跟随哪一个 Agent
+
+适配器给每个事件打上 `source: claude` 标记。用户在托盘右键菜单选择“跟随 Agent”后，共享引擎只处理被选中那一路的事件，Claude Code 的事件照常送达但不再改变画面；未选择时默认跟随全部。

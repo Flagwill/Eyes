@@ -49,10 +49,14 @@ eyes waiting
 eyes complete
 eyes hide
 eyes status
+eyes agent            # 查看当前跟随的 Agent
+eyes agent codex      # 只跟随 Codex
 eyes quit
 ```
 
 `start`、`thinking`、`working`、`waiting` 会显示对应神态，`complete` 显示开心表情并在 4.5 秒后淡出。`blink`、`look X Y` 和 `emotion ID` 可用于调试。首次执行显示命令时，客户端会自动启动后台宿主。
+
+右击面板上的 Eyes 图标，菜单里的“跟随 Agent”可以指定哪一路智能体驱动眼睛：全部 Agent（默认）、Codex、Claude Code、Pi、opencode。选中的那一路之外的事件仍会到达后台，但不会再改变画面；切换时当前画面会退回待命，避免留下上一个 Agent 的状态。`eyes agent` 等价于同一份选择，适合脚本化设置。
 
 安装后默认不开机自启，也不会预先运行后台。首次从应用菜单启动，或执行 `eyes show` 时，服务才按需启动。用户执行 `eyes hide` 或选择托盘“隐藏 Eyes”后，隐藏意图会持久保存：后台、Codex hook 和工作状态仍可更新，但不会重新绘出眼睛或发布光标注意力；只有 `eyes show` 或托盘“显示双眼”能恢复。隐藏时停止动画和光标轮询，淡出结束后卸载眼睛的原生渲染实例并释放对应 GPU 目标。`eyes quit` 与托盘“退出”会结束宿主并保持退出状态，智能体活动不会自动拉起；用户服务只在异常退出时重启。最后的全局光标位置仍会保留，明确显示后继续跟随。显示时默认每秒更新 60 次，共享弹簧按真实经过的时间推进；原生向量绘制只在模型更新时执行，Plasma 的其他动画复用已绘制的眼睛纹理。屏幕输出尺寸、8×/4×/2× 多重采样和 SMAA 保持原有质量。
 
@@ -127,7 +131,7 @@ eyes complete
 
 `eyes activity complete` 与 `eyes complete` 一致，开心 4.5 秒后淡出；`waiting` 使用柔和的倾听眼形与暂停符号。未知工作状态会报错并保留当前画面与完成计时。重复状态不会重播起势，光标关注优先于工作中的自然扫视。
 
-`start` 自动启动后台宿主并显示好奇；`thinking`、`working`、`waiting` 分别表达规划、工具执行和等待输入；`complete` 开心约 4.5 秒后淡出；`idle` 只是会话结束的临时隐藏，下一项活动仍可显示。`hide` 则是持久用户隐藏，后续 Codex 活动只更新后台状态而不会显现，直到 `eyes show`。`quit` 结束宿主并保持退出，后续活动不会自动启动。桌面宿主通过 `$XDG_RUNTIME_DIR/eyes.sock` 接收命令。Eyes 只在主屏显示，其他显示器保留原壁纸；光标位置由轻量 KWin 脚本经 `org.eyes.Desktop` D-Bus 服务送入动画，驱动双眼眼形、眼距、高光的位置和注意力节奏。
+`start` 自动启动后台宿主并显示好奇；`thinking`、`working`、`waiting` 分别表达规划、工具执行和等待输入；`complete` 开心约 4.5 秒后淡出；`idle` 只是会话结束的临时隐藏，下一项活动仍可显示。`hide` 则是持久用户隐藏，后续 Codex 活动只更新后台状态而不会显现，直到 `eyes show`。`quit` 结束宿主并保持退出，后续活动不会自动启动。桌面宿主通过 `$XDG_RUNTIME_DIR/eyes.sock` 接收命令。`eyes agent` 报告或设置跟随的 Agent（`all`、`codex`、`claude`、`pi`、`opencode`），选择保存在 `$XDG_STATE_HOME/eyes/agent-source`，共享引擎按它过滤事件。Eyes 只在主屏显示，其他显示器保留原壁纸；光标位置由轻量 KWin 脚本经 `org.eyes.Desktop` D-Bus 服务送入动画，驱动双眼眼形、眼距、高光的位置和注意力节奏。
 
 ### Codex Desktop
 
@@ -151,7 +155,7 @@ eyes complete
 
 Eyes 只在显示周期临时替换壁纸插件，不永久接管桌面。首次显示前，后台把每块桌面的原插件和完整壁纸配置写入 `$XDG_STATE_HOME/eyes/wallpaper-origin.json`（默认 `~/.local/state/eyes/wallpaper-origin.json`，权限 `0600`），再挂载 Eyes；隐藏、`complete` 淡出结束和退出时恢复原插件、图片、纯色与填充方式，异常中断则由下一次启动或安装修复。面板永远不写入该状态，也不会被修改。用户在 Eyes 显示期间主动换壁纸时，新选择优先，旧快照不会被写回。安装和普通启动只执行恢复，不会把 Eyes 设为壁纸。壁纸包名称不会被提前解析成单张亮色图片：Eyes 场景交给 Plasma 的 `DayNightWallpaper` 按当前颜色方案选择 `images` 或 `images_dark`，因此暗色壁纸在显示期间仍保持暗色。状态只包含桌面插件名和壁纸配置，不包含文件内容或会话数据，设计与迁移规则见 [ADR-013](docs/decisions/013-reversible-wallpaper-mount.md)。
 
-壁纸插件使用更强的纯模糊并缓存结果，不依赖 KWin blur；不叠加白色或染色蒙版，也不调整壁纸的饱和度、亮度或对比度。Rive 通过 Qt Quick RHI 在 GPU 绘制向量，输出纹理尺寸随屏幕构图放大，不把固定低分辨率画面拉伸到桌面。`FrameAnimation` 驱动共享弹簧输入。状态桥只监听 `127.0.0.1:38271`；客户端等 URL 设置完成后再启动，并在连接后主动请求一次快照。托盘菜单可明确显示、持久隐藏、演示或完全退出。
+壁纸插件使用更强的纯模糊并缓存结果，不依赖 KWin blur；不叠加白色或染色蒙版，也不调整壁纸的饱和度、亮度或对比度。Rive 通过 Qt Quick RHI 在 GPU 绘制向量，输出纹理尺寸随屏幕构图放大，不把固定低分辨率画面拉伸到桌面。`FrameAnimation` 驱动共享弹簧输入。状态桥只监听 `127.0.0.1:38271`；客户端等 URL 设置完成后再启动，并在连接后主动请求一次快照。托盘菜单可明确显示、持久隐藏、选择跟随的 Agent、演示或完全退出。
 
 ## 仓库结构
 

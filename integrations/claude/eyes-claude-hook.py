@@ -68,6 +68,9 @@ def normalize(event: dict[str, Any]) -> dict[str, Any] | None:
     """Return an engine-shaped event, or None when Eyes should ignore it."""
     name = event.get("hook_event_name")
     mapped = dict(event)
+    # The user can tell Eyes which agent to follow. Every event names the
+    # agent it came from so the shared engine can drop the others.
+    mapped["source"] = "claude"
 
     tool = event.get("tool_name")
     if isinstance(tool, str):

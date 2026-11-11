@@ -111,6 +111,70 @@ void removeUserSuppression()
         QFile::remove(path);
 }
 
+// The agents the user can choose to follow. "all" keeps every agent in
+// charge, which is the default.
+const QStringList &agentSources()
+{
+    static const QStringList sources = {
+        QStringLiteral("all"),   QStringLiteral("codex"),
+        QStringLiteral("claude"), QStringLiteral("pi"),
+        QStringLiteral("opencode"),
+    };
+    return sources;
+}
+
+QString agentSourceMarkerPath()
+{
+    const QByteArray configured = qgetenv("XDG_STATE_HOME").trimmed();
+    const QString stateHome = !configured.isEmpty()
+        ? QFile::decodeName(configured)
+        : QDir(QDir::homePath()).filePath(QStringLiteral(".local/state"));
+    return QDir(stateHome).filePath(QStringLiteral("eyes/agent-source"));
+}
+
+QString selectedAgentSource()
+{
+    QFile marker(agentSourceMarkerPath());
+    if (!marker.exists())
+        return QStringLiteral("all");
+    if (!marker.open(QIODevice::ReadOnly))
+        return QStringLiteral("all");
+    const QString value =
+        QString::fromUtf8(marker.readAll()).trimmed().toLower();
+    return agentSources().contains(value) ? value : QStringLiteral("all");
+}
+
+bool persistAgentSource(const QString &source)
+{
+    const QString path = agentSourceMarkerPath();
+    if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+        return false;
+    QSaveFile marker(path);
+    if (!marker.open(QIODevice::WriteOnly))
+        return false;
+    marker.write(source.toUtf8() + '\n');
+    if (!marker.commit())
+        return false;
+    QFile::setPermissions(
+        path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return true;
+}
+
+QString agentSourceLabel(const QString &source)
+{
+    if (source == QLatin1String("all"))
+        return QStringLiteral("全部 Agent");
+    if (source == QLatin1String("codex"))
+        return QStringLiteral("Codex");
+    if (source == QLatin1String("claude"))
+        return QStringLiteral("Claude Code");
+    if (source == QLatin1String("pi"))
+        return QStringLiteral("Pi");
+    if (source == QLatin1String("opencode"))
+        return QStringLiteral("opencode");
+    return source;
+}
+
 struct AgentState {
     QString motion = QStringLiteral("idle");
     QString title = QStringLiteral("随时准备出发");
@@ -395,6 +459,26 @@ QJsonObject EyesService::applyCommand(const QString &line)
         setState(emotion, QStringLiteral("正在表达"), true);
     } else if (command == QLatin1String("status")) {
         // Status is intentionally read-only.
+    } else if (command == QLatin1String("agent")) {
+        const QString wanted = parts.value(1).trimmed().toLower();
+        if (!wanted.isEmpty()) {
+            if (!agentSources().contains(wanted)) {
+                return {{QStringLiteral("ok"), false},
+                        {QStringLiteral("error"),
+                         QStringLiteral("unknown agent: %1").arg(wanted)}};
+            }
+            if (!persistAgentSource(wanted)) {
+                qWarning() << "Eyes: unable to persist the agent selection";
+                return {{QStringLiteral("ok"), false},
+                        {QStringLiteral("error"),
+                         QStringLiteral("unable to save the agent selection")}};
+            }
+            // The followed agent changed, so the state on screen belongs to
+            // another agent and must not stay there.
+            setState(QStringLiteral("idle"), QStringLiteral("等待所选 Agent"),
+                     false);
+            setShown(false);
+        }
     } else if (command == QLatin1String("demo")) {
         if (!suppressed())
             Q_EMIT demoRequested();
@@ -416,6 +500,7 @@ QJsonObject EyesService::applyCommand(const QString &line)
         {QStringLiteral("ok"), true},
         {QStringLiteral("visible"), m_shown},
         {QStringLiteral("suppressed"), suppressed()},
+        {QStringLiteral("agent"), selectedAgentSource()},
         {QStringLiteral("motion"), m_state.motion},
         {QStringLiteral("title"), m_state.title},
     };
@@ -994,6 +1079,22 @@ private:
                             m_service.applyCommand(QStringLiteral("hide"));
                         });
         menu->addSeparator();
+        // The user picks the agent Eyes follows. Every other agent keeps
+        // running, but the shared engine drops its events.
+        QMenu *sourceMenu = menu->addMenu(QStringLiteral("跟随 Agent"));
+        for (const QString &source : agentSources()) {
+            QAction *action =
+                sourceMenu->addAction(agentSourceLabel(source));
+            action->setCheckable(true);
+            action->setData(source);
+            connect(action, &QAction::triggered, this, [this, source] {
+                m_demoTimer.stop();
+                m_service.applyCommand(QStringLiteral("agent ") + source);
+                refreshAgentSourceActions();
+            });
+            m_agentSourceActions.append(action);
+        }
+        menu->addSeparator();
         menu->addAction(QStringLiteral("预览完整工作周期"), this,
                         [this] {
                             m_service.applyCommand(QStringLiteral("show"));
@@ -1005,6 +1106,8 @@ private:
             m_service.applyCommand(QStringLiteral("quit"));
         });
         m_tray->setContextMenu(menu);
+        connect(menu, &QMenu::aboutToShow, this,
+                [this] { refreshAgentSourceActions(); });
         connect(m_tray, &QSystemTrayIcon::activated, this,
                 [this](QSystemTrayIcon::ActivationReason reason) {
                     if (reason == QSystemTrayIcon::Trigger) {
@@ -1013,6 +1116,15 @@ private:
                     }
                 });
         m_tray->show();
+    }
+
+    // The selection also changes outside the tray, through the command
+    // client, so the marks are refreshed whenever the menu opens.
+    void refreshAgentSourceActions()
+    {
+        const QString current = selectedAgentSource();
+        for (QAction *action : m_agentSourceActions)
+            action->setChecked(action->data().toString() == current);
     }
 
     QApplication *m_application;
@@ -1025,6 +1137,7 @@ private:
     EyesService m_service;
     WallpaperBridge *m_wallpaperBridge = nullptr;
     QSystemTrayIcon *m_tray = nullptr;
+    QList<QAction *> m_agentSourceActions;
     WallpaperController *m_wallpaperController = nullptr;
     QTimer m_demoTimer;
     QStringList m_demoCommands;

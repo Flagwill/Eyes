@@ -13,6 +13,7 @@
     "desktop:hidpi:test": "npm run desktop:build && QT_SCALE_FACTOR=2 QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl \"${QT6_BIN_DIR:-/usr/lib/qt6/bin}/qmltestrunner\" -input tests/qml/tst_rive.qml -o -,txt",
     "desktop:cursor:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/cursor.test.mjs",
     "desktop:activity:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/activities.test.mjs",
+    "desktop:agent:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/agent-source.test.mjs",
     "desktop:wallpaper:test": "npm run desktop:build && dbus-run-session -- node --test tests/desktop/wallpaper.test.mjs",
     "desktop:wallpaper:rig": "npm run desktop:build && bash tools/wallpaper-rig.sh",
     "codex:hooks:install": "python3 packaging/install-codex-hooks.py",

@@ -22,6 +22,7 @@ import { createBridge } from "./eyes-bridge.mjs";
 type EngineEvent = {
   hook_event_name: string;
   session_id: string;
+  source?: string;
   tool_name?: string;
   tool_input?: unknown;
   tool_use_id?: string;
@@ -59,6 +60,12 @@ const TOOL_ALIASES: Record<string, string> = {
 export function translateTool(tool: string): string {
   const name = String(tool || "").toLowerCase();
   return TOOL_ALIASES[name] ?? name;
+}
+
+const SOURCE = "pi";
+
+function withSource(event: EngineEvent | null): EngineEvent | null {
+  return event ? { ...event, source: SOURCE } : null;
 }
 
 export function createTranslator() {
@@ -101,7 +108,16 @@ export function createTranslator() {
     };
   }
 
-  return { lifecycle, tool, setSession, currentSession };
+  // The user can tell Eyes which agent to follow. Every event names the
+  // agent it came from so the shared engine can drop the others.
+  return {
+    lifecycle: (hookEventName: string, sessionId?: string) =>
+      withSource(lifecycle(hookEventName, sessionId)),
+    tool: (event: PiToolEvent, phase: "before" | "after") =>
+      withSource(tool(event, phase)),
+    setSession,
+    currentSession,
+  };
 }
 
 export default function eyesExtension(pi: ExtensionAPI) {

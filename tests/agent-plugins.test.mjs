@@ -107,6 +107,18 @@ const ocTool = (tool, id, input = {}, status) => ({
 
 const ocEvent = (type, data = {}) => ({ type, data: { sessionID: 'oc-session', ...data } });
 
+test('every adapter names the agent its events came from', () => {
+  const opencode = createOpencodeTranslator();
+  const pi = createPiTranslator();
+  // The shared engine drops the events of the agents the user did not pick.
+  const oc = opencode.event({ type: 'session.created', data: { sessionID: 's' } });
+  assert.equal(oc.source, 'opencode');
+  pi.setSession('s');
+  assert.equal(pi.lifecycle('SessionStart').source, 'pi');
+  assert.equal(opencode.tool({ tool: 'read', sessionID: 's', id: 't1' }, 'before').source,
+    'opencode');
+});
+
 test('opencode tools map to purposeful Eyes activities', async (t) => {
   const events = opencodeEvents([
     { event: ocEvent('session.execution.started') },

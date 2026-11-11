@@ -43,3 +43,7 @@ opencode 只从 `~/.config/opencode/plugins/` 加载插件，不认 `OPENCODE_CO
 - 引擎默认连接 `$XDG_RUNTIME_DIR/eyes.sock`，可用 `EYES_CODEX_SOCKET` 覆盖；`EYES_HOOK_ENGINE` 可指定另一个引擎脚本。
 - opencode 的事件流包含所有项目与会话的事件。适配器按 `session_id` 维护各自的状态，互不干扰。
 - 多个 opencode 实例（后台服务与 `--standalone` 私有服务）会同时驱动同一块壁纸，后到的状态覆盖先到的。
+
+## 跟随哪一个 Agent
+
+插件给每个事件打上 `source: opencode` 标记。用户在托盘右键菜单选择“跟随 Agent”后，共享引擎只处理被选中那一路的事件，opencode 的事件照常送达但不再改变画面；未选择时默认跟随全部。
