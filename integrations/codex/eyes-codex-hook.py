@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -137,6 +138,11 @@ TOOL_ACTIVITIES = ACTIVITY_IDS - {
     "listening", "debugging", "retrying", "summarizing", "blocked", "complete",
 }
 MIN_TRANSITION_DWELL = 0.3
+# A stuck peer must never block the agent that produced the event. Wait for
+# the session lock only briefly, then continue without it: the state file is
+# written atomically, so a concurrent writer cannot corrupt it. The wait stays
+# well below the host hook timeout so the event still reaches the wallpaper.
+LOCK_WAIT_SECONDS = 1.5
 IMMEDIATE_COMMANDS = {
     "waiting",
     "activity listening",
@@ -168,6 +174,27 @@ def saved_tool(item: Any) -> dict[str, Any]:
     if item.get("anonymous_shell") is True:
         entry["anonymous_shell"] = True
     return entry
+
+
+def acquire_lock(lock: Any) -> bool:
+    """Take the session lock without ever blocking the calling agent.
+
+    Several hosts can report the same session at once. The lock keeps their
+    state updates ordered, but a peer that dies while holding it must not
+    stall the agent forever, so the wait is bounded. The caller continues
+    without the lock when the wait runs out: the state file is replaced
+    atomically, so a concurrent writer cannot corrupt it, and dropping the
+    event would lose a state the user needs to see.
+    """
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.02)
 
 
 def load_state(path: Path) -> dict[str, Any]:
@@ -219,11 +246,21 @@ def load_state(path: Path) -> dict[str, Any]:
 
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
-    path.write_text(
-        json.dumps(state, ensure_ascii=False, separators=(",", ":")),
-        encoding="utf-8",
-    )
-    path.chmod(0o600)
+    # Write through a temporary file so a reader never observes a partial
+    # state, and so a concurrent writer cannot interleave with ours.
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(state, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def response_failed(response: Any) -> bool:
@@ -534,7 +571,11 @@ def handle(event: dict[str, Any], *, now: float | None = None) -> None:
     command: str | None = None
     with lock_path.open("a+", encoding="utf-8") as lock:
         lock_path.chmod(0o600)
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        # Another process may own this session. Waiting forever would stall
+        # the agent, so give up on the lock and continue: the state file is
+        # replaced atomically, and skipping the event would hide a state
+        # the user needs to see.
+        acquire_lock(lock)
         state = load_state(state_path)
         command = transition(event, state)
         if command is not None:
@@ -570,7 +611,30 @@ def handle(event: dict[str, Any], *, now: float | None = None) -> None:
                 pass
 
 
+def defer_shutdown_signals() -> None:
+    """Finish the event that is already in flight before the process exits.
+
+    Hosts such as opencode stop their whole process group when a run ends.
+    The state machine can be torn down between reading an event and
+    dispatching it, and the user would never see that state. A shutdown
+    signal is therefore ignored instead of acted upon: the engine completes
+    the event and exits quietly, which is the contract every host expects.
+    """
+    def defer(_signum: int, _frame: Any) -> None:
+        return
+
+    for name in ("SIGTERM", "SIGINT", "SIGHUP"):
+        number = getattr(signal, name, None)
+        if number is None:
+            continue
+        try:
+            signal.signal(number, defer)
+        except (OSError, ValueError):
+            pass
+
+
 def main() -> int:
+    defer_shutdown_signals()
     try:
         event = json.load(sys.stdin)
         if isinstance(event, dict):

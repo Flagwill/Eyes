@@ -139,6 +139,14 @@ eyes complete
 
 `npm run claude:hooks:install`（安装脚本也会调用）把 hooks 合并进 `~/.claude/settings.json`，并放置 `~/.claude/hooks/eyes-claude-hook.py` 及共享引擎。适配器复用 Codex 的状态机，只翻译 Claude 的失败、中断、权限通知与工具名；不输出任何内容，错误静默，尊重用户隐藏状态。源在 `integrations/claude/`，事件映射与限制见 [docs/CLAUDE-CODE.md](docs/CLAUDE-CODE.md)。已运行的会话需重启后加载。
 
+### opencode
+
+`npm run opencode:plugin:install`（安装脚本也会调用）把插件装进 `~/.config/opencode/plugins/eyes/`，与共享引擎副本一起放置。opencode 没有 hook 载荷，适配器把插件事件与工具钩子翻译成同一套状态机词汇；不输出任何内容，错误静默，尊重用户隐藏状态。源在 `integrations/plugins/`，事件映射与限制见 [docs/OPENCODE.md](docs/OPENCODE.md)。重新启动 opencode 后生效。
+
+### Pi
+
+`npm run pi:extension:install`（安装脚本也会调用）把扩展装进 `~/.pi/agent/extensions/eyes/`，与共享引擎副本一起放置。适配器把 Pi 的生命周期事件翻译成同一套状态机词汇；不输出任何内容，错误静默，尊重用户隐藏状态。源在 `integrations/plugins/`，事件映射与限制见 [docs/PI.md](docs/PI.md)。运行中的 Pi 会话可用 `/reload` 重新加载扩展。
+
 用户隐藏状态保存在 `$XDG_STATE_HOME/eyes/user-visibility`（默认 `~/.local/state/eyes/user-visibility`，权限 `0600`）。它只记录 `hidden` 或 `quit`，不包含会话、提示词或工具内容。Codex / Claude Code hook、命令客户端和 systemd 用户服务都尊重它；设计与恢复规则见 [ADR-011](docs/decisions/011-user-visibility-intent.md)。
 
 Eyes 只在显示周期临时替换壁纸插件，不永久接管桌面。首次显示前，后台把每块桌面的原插件和完整壁纸配置写入 `$XDG_STATE_HOME/eyes/wallpaper-origin.json`（默认 `~/.local/state/eyes/wallpaper-origin.json`，权限 `0600`），再挂载 Eyes；隐藏、`complete` 淡出结束和退出时恢复原插件、图片、纯色与填充方式，异常中断则由下一次启动或安装修复。面板永远不写入该状态，也不会被修改。用户在 Eyes 显示期间主动换壁纸时，新选择优先，旧快照不会被写回。安装和普通启动只执行恢复，不会把 Eyes 设为壁纸。壁纸包名称不会被提前解析成单张亮色图片：Eyes 场景交给 Plasma 的 `DayNightWallpaper` 按当前颜色方案选择 `images` 或 `images_dark`，因此暗色壁纸在显示期间仍保持暗色。状态只包含桌面插件名和壁纸配置，不包含文件内容或会话数据，设计与迁移规则见 [ADR-013](docs/decisions/013-reversible-wallpaper-mount.md)。
@@ -168,9 +176,14 @@ tests/codex-hooks.test.mjs      Codex 生命周期映射、用户安装与静默
 integrations/codex/             用户级 Codex Desktop 生命周期接入源
 integrations/claude/            用户级 Claude Code 生命周期接入源（复用 Codex 引擎）
 tests/claude-hooks.test.mjs     Claude 事件映射、settings.json 合并安装回归
+integrations/plugins/           opencode 插件与 Pi 扩展接入源（复用 Codex 引擎）
+packaging/install-agent-plugins.py  opencode 插件与 Pi 扩展安装器
+tests/agent-plugins.test.mjs    opencode 与 Pi 事件映射、引擎投递回归
 docs/MOTION.md                  眼神表演、高光和注意力动作约定
 docs/CODEX.md                   Codex hooks 映射、信任与限制
 docs/CLAUDE-CODE.md             Claude Code hooks 映射与限制
+docs/OPENCODE.md                opencode 插件事件映射与限制
+docs/PI.md                      Pi 扩展事件映射与限制
 docs/decisions/                 架构决策与生命周期约定
 docs/gallery/                   开发过程视觉快照
 AGENTS.md                       仓库记忆与后续维护约束

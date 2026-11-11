@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
-  existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
+  existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -419,6 +420,63 @@ test('malformed hook input and a missing Eyes host stay silent and successful', 
   assert.equal(result.stderr, '');
   assert.equal(existsSync(join(root, 'eyes-codex')), false);
 });
+
+test('a shutdown signal during an event never drops it', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'eyes-codex-signal-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // The user hid Eyes, so the engine updates its state without touching a host.
+  const home = join(root, 'state');
+  mkdirSync(join(home, 'eyes'), { recursive: true });
+  writeFileSync(join(home, 'eyes', 'user-visibility'), 'hidden\n');
+  const child = spawn('python3', ['integrations/codex/eyes-codex-hook.py'], {
+    env: {
+      ...process.env,
+      XDG_RUNTIME_DIR: root,
+      XDG_STATE_HOME: home,
+      EYES_CODEX_SOCKET: join(root, 'missing.sock'),
+      EYES_CODEX_EYES: join(root, 'missing-eyes'),
+    },
+  });
+  let stderr = '';
+  child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+  // A failing assertion must never leave the engine behind.
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
+  // The event is written but stdin stays open, so the engine waits for the
+  // end of the stream exactly like a host that stops its process group
+  // while the hook is still running.
+  child.stdin.write(JSON.stringify({
+    hook_event_name: 'UserPromptSubmit',
+    session_id: 'signal',
+  }));
+  // Wait until the engine has installed its signal guard.
+  let guarded = false;
+  for (let attempt = 0; attempt < 100 && !guarded; attempt += 1) {
+    guarded = await catchesSignal(child.pid, 15);
+    if (!guarded) await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.equal(guarded, true, 'the engine never installed its signal guard');
+  child.kill('SIGTERM');
+  child.stdin.end();
+  const outcome = await new Promise((r) => child.on('close', (code, signal) => r({ code, signal })));
+  assert.equal(outcome.code, 0, stderr);
+  assert.equal(outcome.signal, null);
+  const saved = readdirSync(join(root, 'eyes-codex')).filter((name) => name.endsWith('.json'));
+  assert.equal(saved.length, 1);
+  const recorded = JSON.parse(readFileSync(join(root, 'eyes-codex', saved[0]), 'utf8'));
+  assert.equal(recorded.last_dispatched_command, 'activity listening');
+});
+
+// Report whether a process has installed a handler for the given signal.
+async function catchesSignal(pid, number) {
+  try {
+    const status = readFileSync(`/proc/${pid}/status`, 'utf8');
+    const caught = /SigCgt:\s*([0-9a-f]+)/.exec(status);
+    if (!caught) return true;
+    return (BigInt(`0x${caught[1]}`) & (1n << BigInt(number - 1))) !== 0n;
+  } catch {
+    return true;
+  }
+}
 
 test('user hook installer merges Eyes entries without replacing unrelated hooks', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'eyes-codex-install-'));

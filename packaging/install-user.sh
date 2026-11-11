@@ -93,6 +93,9 @@ chmod 0644 "$application_entry"
 python3 "$project_root/packaging/install-codex-hooks.py"
 # Claude Code gets the same lifecycle presence; skipped when it is not installed.
 python3 "$project_root/packaging/install-claude-hooks.py"
+# opencode and Pi load a plugin instead of hooks; each is skipped when the
+# tool is not installed.
+python3 "$project_root/packaging/install-agent-plugins.py"
 
 # Installation must leave the person's wallpaper untouched. Restore any
 # temporary mount left by a crash and repair the permanent mount written by

@@ -17,6 +17,8 @@
     "desktop:wallpaper:rig": "npm run desktop:build && bash tools/wallpaper-rig.sh",
     "codex:hooks:install": "python3 packaging/install-codex-hooks.py",
     "claude:hooks:install": "python3 packaging/install-claude-hooks.py",
+    "opencode:plugin:install": "python3 packaging/install-agent-plugins.py --only opencode",
+    "pi:extension:install": "python3 packaging/install-agent-plugins.py --only pi",
     "desktop": "npm run desktop:build && ./bin/eyes show",
     "desktop:install": "bash packaging/install-user.sh"
   },

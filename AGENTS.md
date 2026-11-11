@@ -70,6 +70,7 @@ Eyes 是 Agent harness 的桌面存在层。Agent 工作时，它会在壁纸上
 - `desktop/main.cpp`：无窗口 Qt 后台、Unix socket、WebSocket、D-Bus、托盘和按屏幕映射光标。
 - `integrations/codex/hooks.json`、`integrations/codex/eyes-codex-hook.py`：用户级 Codex 生命周期适配器源；安装到 `~/.codex`，只调用现有 Eyes 命令，错误必须静默并以 0 退出。不要在仓库内保留第二份 `.codex` hook 入口，否则已信任的项目级配置会与用户级配置重复驱动状态。
 - `integrations/claude/`、`packaging/install-claude-hooks.py`：用户级 Claude Code 适配器源与安装器。适配器只翻译 Claude 事件，状态机复用 `integrations/codex/eyes-codex-hook.py`（安装时复制为 `~/.claude/hooks/eyes_hook_engine.py`）；修改引擎后须重新安装两侧。必须零输出（SessionStart stdout 会进模型上下文），错误静默退出 0；安装器只合并 `settings.json` 的 `hooks`，保留其他键与权限位。见 `docs/CLAUDE-CODE.md`。
+- `integrations/plugins/`、`packaging/install-agent-plugins.py`：opencode 插件与 Pi 扩展接入源。两者只翻译宿主事件，状态机同样复用 `integrations/codex/eyes-codex-hook.py`（安装时复制为 `eyes_hook_engine.py`）。`eyes-bridge.mjs` 串行投递事件、启动引擎进程，并让引擎脱离宿主进程组：opencode 结束一次运行会给整个进程组发 SIGTERM，未脱离时正在投递的事件会被吞掉。opencode 会在同一进程内多次求值插件模块，适配器用 `globalThis` 单例守卫只保留一份订阅与一条事件队列。必须零输出，错误静默退出 0。见 `docs/OPENCODE.md`、`docs/PI.md`。
 - `.codex/config.toml`：项目级 Codex MCP 配置，仅注册 Serena；不承载 lifecycle hooks。
 - `.serena/`：Serena 项目配置与分层项目记忆；`cache/` 和 `project.local.yml` 为本地状态。
 - `.beads/`：Beads issue 数据库配置、Git hooks 与受版本控制的元数据；Dolt 数据库和运行时文件不提交。
