@@ -16,7 +16,9 @@ npm run pi:extension:install    # 或运行 packaging/install-user.sh，它会�
 | `eyes-bridge.mjs` | 事件投递桥：串行化事件、启动引擎进程、保证宿主收尾不吞事件 |
 | `eyes_hook_engine.py` | `integrations/codex/eyes-codex-hook.py` 的同源副本（共享状态机） |
 
-Pi 从 `~/.pi/agent/extensions/` 自动发现扩展，也可放在项目里的 `.pi/extensions/`。未显式指定目录且 `~/.pi/agent` 不存在时安装器跳过，不为没有 Pi 的机器创建目录。已运行的 Pi 会话可用 `/reload` 重新加载扩展。
+Pi 从 `~/.pi/agent/extensions/` 自动发现扩展，也可放在项目里的 `.pi/extensions/`。未显式指定目录且 `~/.pi/agent` 不存在时安装器跳过，不为没有 Pi 的机器创建目录。
+
+Pi 在会话开始时读取扩展。安装扩展之前就已经打开的 Pi 会话仍然带着旧的扩展集合，不会把事件送到引擎，眼睛也就没有反应；在那些会话里执行 `/reload`（或重启 Pi）即可生效。安装器在装完后会提示这一点。`/reload` 会重新加载扩展、技能与提示词，Pi 在模型回复进行中会拒绝执行并提示等待。
 
 ## 事件映射
 
@@ -45,3 +47,5 @@ Pi 从 `~/.pi/agent/extensions/` 自动发现扩展，也可放在项目里的 `
 ## 跟随哪一个 Agent
 
 扩展给每个事件打上 `source: pi` 标记。用户在托盘右键菜单选择“跟随 Agent”后，共享引擎只处理被选中那一路的事件，Pi 的事件照常送达但不再改变画面；未选择时默认跟随全部。
+
+选择“Pi”只对真正把事件送达引擎的 Pi 会话有效。扩展尚未被加载的 Pi 会话不会产生事件，跟随哪一个 Agent 都看不到它的反应；先 `/reload` 再选择。

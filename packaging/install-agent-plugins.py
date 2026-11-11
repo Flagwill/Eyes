@@ -114,6 +114,14 @@ def install(host: str, argument: str | None, dry_run: bool) -> int:
         return 1
 
     print(f"Eyes {target['label']} installed in {directory}")
+    if host == "pi":
+        # Pi reads its extensions when a session starts. A session that is
+        # already running keeps the extensions it started with, so the user
+        # has to reload them before Eyes reacts to that session.
+        print(
+            "Eyes: open Pi sessions keep their old extensions. "
+            "Run /reload in them (or restart Pi) to pick up the Eyes extension."
+        )
     return 0
 
 

@@ -23,11 +23,29 @@ function run(command, args, env, input = '', cwd = resolve('.')) {
   });
 }
 
-function runHook(input, env) {
+// The engine reads the user's own state next to the hidden marker: the agent
+// the user chose to follow. A test must never see it, or the suite would
+// break as soon as the user picks an agent on their own desktop.
+let absentStateCounter = 0;
+
+function absentStateHome() {
+  absentStateCounter += 1;
+  return join(tmpdir(), `eyes-hook-absent-state-${process.pid}-${absentStateCounter}`);
+}
+
+function hookEnv(overrides = {}) {
+  return {
+    ...process.env,
+    ...overrides,
+    XDG_STATE_HOME: overrides.XDG_STATE_HOME || absentStateHome(),
+  };
+}
+
+function runHook(input, env = {}) {
   return run(
     'python3',
     ['integrations/codex/eyes-codex-hook.py'],
-    env,
+    hookEnv(env),
     JSON.stringify(input),
   );
 }
@@ -70,7 +88,7 @@ print(json.dumps(commands))
   const result = await run(
     'python3',
     ['-c', source, resolve('integrations/codex/eyes-codex-hook.py')],
-    { ...process.env, XDG_RUNTIME_DIR: root },
+    hookEnv({ XDG_RUNTIME_DIR: root }),
     JSON.stringify(events),
     tmpdir(),
   );
@@ -96,12 +114,12 @@ hook.dispatch('start')
 hook.dispatch('activity reading')
 hook.dispatch('waiting')
 print(json.dumps(calls))
-`, {}, { ...process.env, XDG_STATE_HOME: root });
+`, {}, { XDG_STATE_HOME: root });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), []);
 });
 
-function pythonHook(script, input, env = process.env) {
+function pythonHook(script, input, env = {}) {
   return run('python3', ['-c', `
 import importlib.util, json, pathlib, sys
 spec = importlib.util.spec_from_file_location('hook', sys.argv[1])
@@ -109,7 +127,7 @@ hook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook)
 data = json.load(sys.stdin)
 ${script}
-`, resolve('integrations/codex/eyes-codex-hook.py')], env, JSON.stringify(input));
+`, resolve('integrations/codex/eyes-codex-hook.py')], hookEnv(env), JSON.stringify(input));
 }
 
 test('an explicit Eyes binary decides whether a host can be launched', async (t) => {
@@ -128,13 +146,13 @@ print(json.dumps({
     "missing": hook.eyes_executable() is None,
     "present": str(hook.eyes_executable() or ""),
 }))
-`, {}, { ...process.env, EYES_CODEX_EYES: missing });
+`, {}, { EYES_CODEX_EYES: missing });
   assert.equal(absent.code, 0, absent.stderr);
   assert.deepEqual(JSON.parse(absent.stdout), { missing: true, present: '' });
 
   const found = await pythonHook(`
 print(json.dumps({"present": str(hook.eyes_executable() or "")}))
-`, {}, { ...process.env, EYES_CODEX_EYES: present });
+`, {}, { EYES_CODEX_EYES: present });
   assert.equal(found.code, 0, found.stderr);
   assert.equal(JSON.parse(found.stdout).present, present);
 });
@@ -157,7 +175,7 @@ for source in ("claude", "pi", "opencode"):
 hook.handle({"hook_event_name": "UserPromptSubmit", "session_id": "mine",
              "source": "codex"})
 print(json.dumps(calls))
-`, {}, { ...process.env, XDG_RUNTIME_DIR: runtime, XDG_STATE_HOME: state });
+`, {}, { XDG_RUNTIME_DIR: runtime, XDG_STATE_HOME: state });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), ['activity listening'],
     'only the chosen agent may reach the host');
@@ -183,7 +201,7 @@ for source in ("claude", "pi", "opencode"):
     hook.handle({"hook_event_name": "UserPromptSubmit",
                  "session_id": "any-" + source, "source": source})
 print(json.dumps(calls))
-`, {}, { ...process.env, XDG_RUNTIME_DIR: runtime, XDG_STATE_HOME: state });
+`, {}, { XDG_RUNTIME_DIR: runtime, XDG_STATE_HOME: state });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).length, 3,
     'without a choice every agent stays in charge');
@@ -487,7 +505,6 @@ test('malformed hook input and a missing Eyes host stay silent and successful', 
   const root = mkdtempSync(join(tmpdir(), 'eyes-codex-hook-errors-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const result = await runHook({ hook_event_name: 'UserPromptSubmit', session_id: '' }, {
-    ...process.env,
     XDG_RUNTIME_DIR: root,
     EYES_CODEX_SOCKET: join(root, 'missing.sock'),
     EYES_CODEX_EYES: join(root, 'missing-eyes'),

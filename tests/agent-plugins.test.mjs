@@ -400,6 +400,10 @@ test('installer installs both hosts, is idempotent and skips absent tools', asyn
     ]);
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /installed/);
+    // Pi reads its extensions when a session starts, so the installer has
+    // to tell the user that a session that is already running needs a
+    // reload before Eyes sees its events.
+    assert.match(result.stdout, /\/reload/);
   }
 
   const pluginDir = join(opencodeHome, 'plugins/eyes');
