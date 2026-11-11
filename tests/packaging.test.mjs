@@ -44,6 +44,25 @@ test('user install is opt-in, exports a launchable app, and restarts only failur
   assert.match(application, /^Actions=Hide;Quit;$/m);
 });
 
+test('the application icon and the tray mark share one geometric eye', () => {
+  const cmake = readFileSync('CMakeLists.txt', 'utf8');
+  const host = readFileSync('desktop/main.cpp', 'utf8');
+  assert.match(cmake,
+    /desktop\/eyes-icon\.svg\s+DESTINATION share\/icons\/hicolor\/scalable\/apps\s+RENAME eyes-desktop\.svg/);
+  assert.match(cmake, /qt_add_resources\([\s\S]*?desktop\/eyes-tray\.svg/);
+  assert.match(host, /:\/desktop\/eyes-tray\.svg/);
+
+  const icon = readFileSync('desktop/eyes-icon.svg', 'utf8');
+  const tray = readFileSync('desktop/eyes-tray.svg', 'utf8');
+  // The menu entry keeps a tile so the mark holds its shape, the tray mark
+  // stays transparent and sits on whatever the panel is painted with.
+  assert.match(icon, /<rect[^>]*fill="#17132A"/);
+  assert.doesNotMatch(tray, /<rect/);
+  const eye = /d="(M17 21\.5H23[^"]+)"/.exec(icon);
+  assert.ok(eye, 'the icon must draw its eye with a path');
+  assert.ok(tray.includes(eye[1]), 'the tray mark must use the same eye');
+});
+
 test('upgrade retires legacy entry points and preserves Eyes and user images', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'eyes-upgrade-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

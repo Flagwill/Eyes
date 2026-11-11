@@ -82,7 +82,7 @@ install(FILES
     DESTINATION share/applications
 )
 install(FILES
-    desktop/eyes-tray.svg
+    desktop/eyes-icon.svg
     DESTINATION share/icons/hicolor/scalable/apps
     RENAME eyes-desktop.svg
 )
