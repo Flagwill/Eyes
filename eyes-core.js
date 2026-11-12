@@ -548,7 +548,7 @@ var EyesCore = (function () {
   // props follow these same poses, with held gaps instead of perpetual bobbing.
   ACTIVITY_SCORES = {
     listening:{entry:{open:.07,lift:-2}, gestures:[{rightLift:-2,rightTension:1.6},
-      {leftLift:-1.5,open:.025},{lift:1,open:-.025}], gaze:[[2,-2],[-2,0],[0,1]], duration:12.8},
+      {leftLift:-1.5,open:.025},{lift:1,open:-.025}], gaze:[[4,-3],[-3,0],[0,1]], duration:12.8},
     planning:{entry:{open:-.06,leftTension:-1.5}, gestures:[{leftSlope:3,leftLift:1,open:-.06},
       {rightLift:-3,rightTension:2},{open:.045,lift:-1}], gaze:[[-5,-2],[6,0],[1,2]], duration:13.6},
     reading:{entry:{lift:1,open:-.04}, gestures:[{leftSlope:1,rightSlope:1},
@@ -582,7 +582,7 @@ var EyesCore = (function () {
     delegating:{entry:{leftLift:-3,open:.04,spacing:2}, gestures:[{leftLift:-2,leftTension:1.5,tilt:-.008},
       {rightLift:-3,rightTension:2,tilt:.008},{spacing:-1,open:-.035}], gaze:[[-6,0],[34,1],[16,3]],duration:12.2},
     waiting:{entry:{open:.025,lift:-1}, gestures:[{rightLift:-1.2,open:.02},
-      {leftLift:-1},{open:-.025,lift:1}], gaze:[[1,-1],[-1,0],[0,0]],
+      {leftLift:-1},{open:-.025,lift:1}], gaze:[[6,-2],[-5,1],[0,-1.5]],
       timing:[[3,.8,.7,1.4],[9,.8,.6,1.5],[14,1,.5,1.5]],duration:19.5},
     blocked:{entry:{leftTension:1,rightTension:-1,tilt:-.006}, gestures:[{asymmetry:-.035,leftSlope:-2},
       {rightTension:-1,open:-.025},{leftLift:-1.5,rightLift:-1}], gaze:[[-3,0],[3,0],[0,-3]],duration:15.2},
@@ -737,10 +737,10 @@ var EyesCore = (function () {
   // nudges the first two glance onsets. Phrase 0 is the original right-up /
   // left-down pair, and every phrase is back at rest before its cycle ends.
   var IDLE_GLANCES = [
-    {shift:[0,0], first:[6.2,-1.4,0], second:[-4.4,1.1,0], settle:[1.4,-.7,0]},
-    {shift:[.7,-.5], first:[-5.8,-1.8,-.012], second:[4.6,1.2,0], settle:[-1.1,-.4,0]},
-    {shift:[-.4,.6], first:[1.6,-3.4,.014], second:[-5,.9,0], settle:[1.2,-.3,0]},
-    {shift:[1,.2], first:[5,1.6,0], second:[-5.4,-1.5,-.01], settle:[.9,-.6,0]},
+    {shift:[0,0], first:[10.5,-2.4,0], second:[-7.5,1.9,0], settle:[2.4,-1.2,0]},
+    {shift:[.7,-.5], first:[-9.8,-3,-.012], second:[7.8,2,0], settle:[-1.9,-.7,0]},
+    {shift:[-.4,.6], first:[2.7,-5.6,.014], second:[-8.5,1.5,0], settle:[2,-.5,0]},
+    {shift:[1,.2], first:[8.5,2.7,0], second:[-9.2,-2.5,-.01], settle:[1.5,-1,0]},
   ];
   var IDLE_GLANCE_ORDER = [0,2,1,3,1,0,3,2];
 
@@ -776,13 +776,13 @@ var EyesCore = (function () {
       return gaze;
     }
     if (!a && !b && !c) return {x:0,y:0};
-    if (emotion === 'happy') return {x:b*2.6,y:-a*1.6};
-    if (emotion === 'curious') return {x:a*6-c*5,y:-a*2.2+c*1};
-    if (emotion === 'thinking') return {x:-a*6.5+b*2.5-c*1.5,y:a*1.8-b*1.6+c*1.1};
+    if (emotion === 'happy') return {x:b*4.5,y:-a*2.4};
+    if (emotion === 'curious') return {x:a*10-c*8.5,y:-a*3.4+c*1.6};
+    if (emotion === 'thinking') return {x:-a*10+b*4-c*2.4,y:a*2.8-b*2.4+c*1.6};
     if (emotion === 'focused') return {x:0,y:0};
-    if (emotion === 'surprised') return {x:c*3.5,y:-a*1.5};
+    if (emotion === 'surprised') return {x:c*5.5,y:-a*2.2};
     if (emotion === 'sleepy') return {x:0,y:(a+b)*1.1-c*1.6};
-    return {x:-a*3.8+c*4.3,y:-a*.8+c*.6};
+    return {x:-a*6.2+c*7,y:-a*1.3+c*1};
   }
 
   // Ambient glances lean the head as a cursor glance does (see
@@ -835,6 +835,14 @@ var EyesCore = (function () {
   // Completion performs the happy gestures, so it borrows all of happy.
   MOOD_ACTING.complete = MOOD_ACTING.happy;
   var LEAN_LIMIT = 0.02, ACTIVITY_BODY_SHARE = 0.6;
+
+  // A cursor is interesting while it moves. Once it has rested for `hold`
+  // seconds the gaze goes back to the mood's own acting (the last position is
+  // kept, never forgotten); when it moves again the eyes return to it with a
+  // brief widened look. That look mixes in idle's baked inhale pose, as the
+  // wake does, so it needs no Rive input of its own; its timing is
+  // [start, attack, hold, release].
+  var ATTENTION = {hold: 4, widen: 0.16, notice: [0, 0.14, 0.1, 0.45]};
 
   function getMood(id) {
     return MOOD_ACTING[id] ? id : getActivity(id).base;
@@ -1015,6 +1023,10 @@ var EyesCore = (function () {
     }
     this.gaze = { x: 0, y: 0, until: 0 };
     this.pointer = { x: 0, y: 0, active: false, until: 0 };
+    // Seconds a resting cursor holds the gaze; Infinity never lets go.
+    this.attentionHold = ATTENTION.hold;
+    this.interest = new Spring(1, 60, 15.5);
+    this.noticeAt = -10;
     this.nextBlink = 2.5;
     this.wakeState = 'idle';
     this.wakeClock = 0;
@@ -1117,6 +1129,11 @@ var EyesCore = (function () {
     this.wakeRefocused = false;
     this.blinkStart = -10;
     this.nextBlink = this.flowTime + WAKE.end + 2.5;
+    // The first look goes to the cursor, however long it rested while hidden.
+    this.pointerRest.at = this.elapsed;
+    this.interest.value = 1;
+    this.interest.velocity = 0;
+    this.noticeAt = -10;
     var sleeping = [[this.springs.gazeY, WAKE.droopGaze], [this.springs.gazeX, WAKE.droopSide],
       [this.springs.tilt, WAKE.droopTilt], [this.lightGaze.y, WAKE.droopGaze],
       [this.lightGaze.x, WAKE.droopSide],
@@ -1174,9 +1191,6 @@ var EyesCore = (function () {
     var waking = this.wakeState !== 'idle';
     var wake = waking ? getWakeEnvelope(this.wakeClock)
       : {closed: 0, droop: 0, wide: 0, glance: 0, lean: 0, accents: 1, light: 1};
-    // The wide look is an inhale; a smile or a drowsy mood keeps its own shape.
-    var inhale = wake.wide * WAKE.inhale * Math.max(0, Math.min(1,
-      1 - this.springs.happy.value - this.springs.sleepy.value));
     if (waking && this.wakeClock < WAKE.arrive) {
       // Until the eyes are open, the mood's performance holds at its first beat
       // instead of playing, popping or blinking behind closed lids.
@@ -1223,21 +1237,53 @@ var EyesCore = (function () {
     }
     var directed = t < this.gaze.until;
     var pointing = this.follow && (this.pointer.active || t < (this.pointer.until || 0));
-    var gaze = directed
-      ? this.gaze
-      : pointing
-        ? this.pointer
-        : { x: ambient.x * energy, y: ambient.y * energy };
-    var target = directed || pointing
-      ? getAttentionPose(this.target, gaze.x, gaze.y)
-      : clone(this.target);
-
-    if (!(directed || pointing)) {
-      target.gazeX = this.target.gazeX + gaze.x;
-      target.gazeY = this.target.gazeY + gaze.y;
+    // A cursor that moves again after resting is noticed with a small perk,
+    // and with a widened look if the eyes had already gone back to work.
+    if (pointing) {
+      var resting = this.pointerRest;
+      if (!this.wasPointing ||
+          Math.hypot(this.pointer.x - resting.x, this.pointer.y - resting.y) > 2.5) {
+        if (alive && (!this.wasPointing || t - resting.at > 3)) kickPop(this, -0.55);
+        if (alive && this.wasPointing && this.interest.value < 0.5) this.noticeAt = t;
+        this.pointerRest = { x: this.pointer.x, y: this.pointer.y, at: t };
+      }
+    }
+    this.wasPointing = pointing;
+    // Interest in a resting cursor fades; without natural motion there is no
+    // acting to return to, so the gaze simply stays.
+    var interest = 0;
+    if (pointing) {
+      // Looking away is unhurried; looking back is a dart.
+      var bored = alive && t - this.pointerRest.at >= this.attentionHold;
+      this.interest.stiffness = bored ? 60 : 420;
+      this.interest.damping = bored ? 15.5 : 41;
+      interest = Math.max(0, Math.min(1, this.interest.step(bored ? 0 : 1, dt)));
+    } else {
+      this.interest.value = 1;
+      this.interest.velocity = 0;
+    }
+    var target;
+    if (directed) {
+      target = getAttentionPose(this.target, this.gaze.x, this.gaze.y);
+    } else {
+      target = clone(this.target);
+      target.gazeX += ambient.x * energy;
+      target.gazeY += ambient.y * energy;
       if (alive) target.tilt += getAmbientLean(this.emotion,
         naturalTime - this.emotionNaturalAt, energy);
+      if (interest > 0) {
+        var attended = getAttentionPose(this.target, this.pointer.x, this.pointer.y);
+        if (interest >= 1) target = attended;
+        else for (var blended in attended) {
+          target[blended] += (attended[blended] - target[blended]) * interest;
+        }
+      }
     }
+    // Wide looks are an inhale; a smile or a drowsy mood keeps its own shape.
+    var inhale = Math.max(wake.wide * WAKE.inhale, alive
+      ? ATTENTION.widen * beat(t - this.noticeAt, ATTENTION.notice[0],
+        ATTENTION.notice[1], ATTENTION.notice[2], ATTENTION.notice[3]) : 0) *
+      Math.max(0, Math.min(1, 1 - this.springs.happy.value - this.springs.sleepy.value));
     // Large shifts of attention are often covered by a blink. A slow follower
     // of the intended gaze measures how far it has just jumped: smooth pursuit
     // never builds enough lead, and each jump makes at most one decision.
@@ -1254,16 +1300,6 @@ var EyesCore = (function () {
         this.blink(this.random() < 0.1);
       }
     }
-    // A cursor that moves again after resting is noticed with a small perk.
-    if (pointing) {
-      var resting = this.pointerRest;
-      if (!this.wasPointing ||
-          Math.hypot(this.pointer.x - resting.x, this.pointer.y - resting.y) > 2.5) {
-        if (alive && (!this.wasPointing || t - resting.at > 3)) kickPop(this, -0.55);
-        this.pointerRest = { x: this.pointer.x, y: this.pointer.y, at: t };
-      }
-    }
-    this.wasPointing = pointing;
     var gazeChange = Math.hypot(target.gazeX - this.fixationTarget.x,
       target.gazeY - this.fixationTarget.y);
     if (gazeChange > 1.2) {
@@ -1294,17 +1330,18 @@ var EyesCore = (function () {
       applyMotion(target, motion, energy);
     }
     if (waking) {
-      // One eye leads a little through the opening. The spline renderers take
-      // the inhale from the pose; Rive mixes the same baked pose below.
+      // One eye leads a little through the opening.
       var openness = 1 - wake.closed;
       var stare = motionPose();
       stare.asymmetry = WAKE.asymmetry * 4 * openness * (1 - openness);
       applyMotion(target, stare, 1);
-      if (inhale > 0) {
-        var wide = getInhalePose();
-        for (var eyeSide of ['l', 'r']) for (var shape of WAKE_SHAPE_KEYS) {
-          target[eyeSide + shape] += (wide[eyeSide + shape] - target[eyeSide + shape]) * inhale;
-        }
+    }
+    if (inhale > 0) {
+      // The spline renderers take the inhale from the pose; Rive mixes the
+      // same baked pose below.
+      var wide = getInhalePose();
+      for (var eyeSide of ['l', 'r']) for (var shape of WAKE_SHAPE_KEYS) {
+        target[eyeSide + shape] += (wide[eyeSide + shape] - target[eyeSide + shape]) * inhale;
       }
     }
 

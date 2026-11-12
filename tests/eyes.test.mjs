@@ -338,7 +338,7 @@ test('ambient acting contains long holds and purposeful glances', () => {
   assert.deepEqual(getAmbientGaze('idle', 3), { x: 0, y: 0 });
   const right = getAmbientGaze('idle', 4.6);
   assert.deepEqual(getAmbientGaze('idle', 5.4), right);
-  assert.ok(right.x > 6 && right.y < -1, 'idle holds a small right-up glance');
+  assert.ok(right.x > 9 && right.y < -2, 'idle holds a readable right-up glance');
   assert.equal(getAmbientGaze('idle', 8).x, 0);
   assert.ok(getAmbientGaze('idle', 11.6).x < -4, 'a second glance answers to the left');
   assert.equal(getAmbientGaze('thinking', 1).x, 0);
@@ -468,6 +468,7 @@ test('fixation corrections have quiet holds, bounded amplitude and no visible lo
 test('a still cursor retains its target and anchored main reflection through natural micro acting', () => {
   for (const fps of [30, 60, 144]) {
     const simulation = new EyeSimulation({ random: () => 0.5 });
+    simulation.attentionHold = Infinity;
     simulation.setPointer(23, -12, true);
     let min = Infinity, max = -Infinity;
     let reference;
@@ -630,6 +631,7 @@ test('resting eyelid acting is visible at default energy while attention stays o
   for (const emotion of EMOTIONS.map(({id}) => id)) {
     const simulation = new EyeSimulation({random: () => 0.5});
     simulation.setEmotion(emotion);
+    simulation.attentionHold = Infinity;
     simulation.setPointer(10, -6, true);
     const baseline = getAttentionPose(getPose(emotion), 10, -6);
     const heights = [], tilts = [], upperBends = [], sharedBends = [];
@@ -725,8 +727,8 @@ test('idle glances vary between cycles without seams and lean the head only whil
   let previous = getAmbientGaze('idle', 0);
   for (let t = 0; t < duration * 8; t += 1 / 60) {
     const gaze = getAmbientGaze('idle', t);
-    assert.ok(Math.hypot(gaze.x - previous.x, gaze.y - previous.y) < 1.6, 'glance targets stay continuous');
-    assert.ok(Math.abs(gaze.x) <= 6.2 && Math.abs(gaze.y) <= 3.4);
+    assert.ok(Math.hypot(gaze.x - previous.x, gaze.y - previous.y) < 2.6, 'glance targets stay continuous');
+    assert.ok(Math.abs(gaze.x) <= 10.5 && Math.abs(gaze.y) <= 5.6);
     const lean = getAmbientLean('idle', t);
     assert.ok(Math.abs(lean) < 0.02);
     if (gaze.x === 0 && gaze.y === 0) assert.equal(lean, 0, 'no lean while holding the centre');
@@ -826,6 +828,81 @@ test('a cursor that moves again after resting is noticed once, with a small perk
   reduced.setPointer(20, 0, true);
   reduced.update(1 / 60);
   assert.equal(reduced.lastFrame.bounce, 0);
+});
+
+test('a resting cursor hands the gaze back to the mood and is met with a widened look when it moves again', () => {
+  const simulation = new EyeSimulation({ random: () => 0.99 });
+  simulation.setEmotion('thinking');
+  const own = getPose('thinking');
+  const run = (seconds, each) => {
+    let frame;
+    for (let i = 0; i < Math.round(seconds * 60); i++) {
+      frame = simulation.update(1 / 60);
+      if (each) each(frame);
+    }
+    return frame;
+  };
+  simulation.setPointer(-25, 10, true);
+  let frame = run(3.5);
+  assert.ok(Math.abs(frame.pose.gazeX + 25) < 1.5 && Math.abs(frame.pose.gazeY - 10) < 1,
+    'a cursor that has just arrived holds the gaze');
+  let previous = frame.pose.gazeX, step = 0;
+  frame = run(3, current => {
+    step = Math.max(step, Math.abs(current.pose.gazeX - previous));
+    previous = current.pose.gazeX;
+  });
+  assert.ok(frame.pose.gazeX > own.gazeX - 8 && frame.pose.gazeY < own.gazeY + 4,
+    'after resting, the eyes return to the thinking look');
+  assert.ok(step > 0.5 && step < 3.2, 'they travel there, without a snap');
+  assert.deepEqual([simulation.pointer.x, simulation.pointer.y], [-25, 10], 'the position is kept');
+
+  const resting = frame.pose.rh;
+  simulation.setPointer(20, 0, true);
+  let widest = 0, inhaled = 0;
+  run(0.5, current => {
+    widest = Math.max(widest, current.pose.rh);
+    inhaled = Math.max(inhaled, riveShare(current.riveInputs, 'idleact'));
+  });
+  assert.ok(widest > resting * 1.08, 'the lids widen as the cursor is noticed');
+  assert.ok(inhaled > 0.12 && inhaled < 0.2, 'and Rive receives the same wide look');
+  frame = run(1.5);
+  assert.ok(Math.abs(frame.pose.gazeX - 20) < 1.5, 'the gaze is back on the cursor');
+  assert.ok(riveShare(frame.riveInputs, 'idleact') < 0.001, 'and the wide look has passed');
+
+  const smile = new EyeSimulation({ random: () => 0.99 });
+  smile.setEmotion('happy');
+  smile.setPointer(-25, 10, true);
+  for (let i = 0; i < 8 * 60; i++) smile.update(1 / 60);
+  smile.setPointer(20, 0, true);
+  for (let i = 0; i < 30; i++) {
+    assert.ok(riveShare(smile.update(1 / 60).riveInputs, 'idleact') < 0.001, 'a smile keeps its band');
+  }
+});
+
+test('attention is only released into natural motion, and a wake looks at the cursor first', () => {
+  for (const configure of [sim => { sim.reducedMotion = true; }, sim => { sim.autonomous = false; },
+    sim => { sim.attentionHold = Infinity; }]) {
+    const simulation = new EyeSimulation({ random: () => 0.99 });
+    configure(simulation);
+    simulation.setEmotion('thinking');
+    simulation.setPointer(-25, 10, true);
+    let frame;
+    for (let i = 0; i < 20 * 60; i++) frame = simulation.update(1 / 60);
+    assert.ok(Math.abs(frame.pose.gazeX + 25) < 1.5, 'the gaze stays on the cursor');
+    simulation.setPointer(20, 0, true);
+    for (let i = 0; i < 30; i++) {
+      assert.ok(riveShare(simulation.update(1 / 60).riveInputs, 'idleact') < 0.001);
+    }
+  }
+  const simulation = new EyeSimulation({ random: () => 0.99 });
+  simulation.setPointer(-25, 10, true);
+  for (let i = 0; i < 10 * 60; i++) simulation.update(1 / 60);
+  assert.ok(Math.abs(simulation.lastFrame.pose.gazeX) < 12, 'released before the wake');
+  simulation.wake();
+  let frame;
+  for (let i = 0; i < 3 * 60; i++) frame = simulation.update(1 / 60);
+  assert.ok(Math.abs(frame.pose.gazeX + 25) < 1.5 && Math.abs(frame.pose.gazeY - 10) < 1,
+    'waking lands on the cursor again');
 });
 
 test('ambient head lean follows the natural-motion energy', () => {
@@ -1148,7 +1225,9 @@ test('the face sleeps lowered and turned aside, the lids open first and the gaze
   assert.ok(justOpen.blink < 0.01 && justOpen.pose.gazeY > awake.pose.gazeY + wake.droopGaze * 0.7,
     'the lids are open while the gaze is still lowered');
   const met = at(wake.lift[0] + wake.lift[1] + 0.15);
-  assert.ok(met.pose.gazeY < awake.pose.gazeY + 1 && met.pose.gazeX > awake.pose.gazeX - 1, 'then the gaze lifts to the viewer');
+  // The reference frame is mid-glance; the viewer is the mood's held gaze.
+  const held = getPose('curious');
+  assert.ok(met.pose.gazeY < held.gazeY + 1 && met.pose.gazeX > held.gazeX - 1, 'then the gaze lifts to the viewer');
   assert.ok(met.face.pitch < justOpen.face.pitch - 0.08 && met.face.yaw > justOpen.face.yaw + 0.04, 'the head trails it up and round');
   assert.ok(sleeping.riveInputs.flow < 5 && met.riveInputs.flow > 40, 'reflections wake with the eyes');
 
